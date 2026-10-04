@@ -354,7 +354,7 @@
                 android:background="@drawable/blbl_tag_chip_bg"
                 android:gravity="center"
                 android:includeFontPadding="false"
-                android:minWidth="40dp"
+                android:minWidth="48dp"
                 android:paddingStart="6dp"
                 android:paddingTop="1dp"
                 android:paddingEnd="6dp"
@@ -370,7 +370,7 @@
                 android:layout_marginStart="6dp"
                 android:layout_weight="1"
                 android:ellipsize="end"
-                android:maxLines="2"
+                android:maxLines="1"
                 android:textColor="?android:attr/textColorSecondary"
                 android:textSize="@dimen/video_card_subtitle_text_size" />
         </LinearLayout>
@@ -396,7 +396,7 @@
                 android:background="@drawable/blbl_tag_chip_bg"
                 android:gravity="center"
                 android:includeFontPadding="false"
-                android:minWidth="40dp"
+                android:minWidth="48dp"
                 android:paddingStart="6dp"
                 android:paddingTop="1dp"
                 android:paddingEnd="6dp"
