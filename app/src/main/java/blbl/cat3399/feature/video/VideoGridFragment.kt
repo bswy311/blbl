@@ -117,6 +117,7 @@ class VideoGridFragment : Fragment(), RefreshKeyHandler, TabSwitchFocusTarget {
                         true
                     },
                     actionDelegate = actionController,
+                    subtitleTagEnabled = source == SRC_WEEKLY,
                 )
         }
         binding.recycler.adapter = adapter

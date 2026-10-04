@@ -27,6 +27,8 @@ class VideoCardAdapter(
     private val fixedItemMarginDimenRes: Int? = null,
     private val stableIdKey: ((VideoCard) -> String)? = null,
     private val isSelected: ((VideoCard, Int) -> Boolean)? = null,
+    // Renders the uploader as a chip (like the editor's-note row) instead of an "UP xxx" line.
+    private val subtitleTagEnabled: Boolean = false,
 ) : RecyclerView.Adapter<VideoCardAdapter.Vh>() {
     private val items = ArrayList<VideoCard>()
     private var expandedCardStableKey: String? = null
@@ -110,6 +112,7 @@ class VideoCardAdapter(
             onItemFocusLost = ::handleItemFocusLost,
             onOverlayActionSelect = ::updateSelectedActionIndex,
             isOverlayExpanded = ::isOverlayExpanded,
+            subtitleTagEnabled = subtitleTagEnabled,
         )
     }
 
@@ -280,6 +283,7 @@ class VideoCardAdapter(
         private val onItemFocusLost: (VideoCard) -> Unit,
         private val onOverlayActionSelect: (Int) -> Unit,
         private val isOverlayExpanded: (VideoCard) -> Boolean,
+        private val subtitleTagEnabled: Boolean,
     ) : RecyclerView.ViewHolder(binding.root) {
         private var pointerDownForLongClick: Boolean = false
 
@@ -313,12 +317,20 @@ class VideoCardAdapter(
             binding.tvTitle.text = item.title
             val subtitleText =
                 item.pubDateText
-                    ?: if (item.ownerName.isBlank()) "" else "UP ${item.ownerName}"
+                    ?: if (item.ownerName.isBlank()) {
+                        ""
+                    } else if (subtitleTagEnabled) {
+                        item.ownerName.trim()
+                    } else {
+                        "UP ${item.ownerName}"
+                    }
+            val showOwnerTag = subtitleTagEnabled && item.pubDateText == null && subtitleText.isNotBlank()
             binding.tvSubtitle.text = subtitleText
             val pubDateText = item.pubDate?.let { Format.pubDateText(it) }.orEmpty()
             binding.tvPubdate.text = pubDateText
             val showSubtitleRow = !isEpisodeStyleCard && (subtitleText.isNotBlank() || pubDateText.isNotBlank())
             binding.llSubtitle.isVisible = showSubtitleRow
+            binding.tvSubtitleTag.isVisible = showSubtitleRow && showOwnerTag
             binding.tvSubtitle.isVisible = showSubtitleRow && subtitleText.isNotBlank()
             binding.tvPubdate.isVisible = showSubtitleRow && pubDateText.isNotBlank()
 
