@@ -149,7 +149,7 @@ object ApkUpdateFlow {
                     val apkFile =
                         ApkUpdater.downloadApkToCache(
                             context = activity,
-                            url = apkUrl ?: latestVersionHint?.let(ApkUpdater::apkUrlFor) ?: ApkUpdater.TEST_APK_URL,
+                            url = apkUrl ?: ApkUpdater.apkUrlFor(latestVersion),
                         ) { dlState ->
                             when (dlState) {
                                 ApkUpdater.Progress.Connecting -> {

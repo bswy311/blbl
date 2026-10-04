@@ -26,11 +26,13 @@ import java.util.concurrent.TimeUnit
 import kotlin.math.roundToInt
 
 object ApkUpdater {
-    private const val DEBUG_APK_URL = "https://cat3399.top/blbl/blbl-latest-debug.apk"
-    private const val RELEASE_APK_URL = "https://cat3399.top/blbl/blbl-latest-release.apk"
-    private const val CHANGELOG_URL = "https://cat3399.top/blbl/CHANGELOG.md"
-    val TEST_APK_URL: String
-        get() = if (BuildConfig.DEBUG) DEBUG_APK_URL else RELEASE_APK_URL
+    // Updates come from this fork's own GitHub Releases. The official channel (cat3399.top) can
+    // never be installed over our builds because its APKs are signed with the original author's
+    // key, so releasing there would only produce "安装失败" prompts.
+    private const val UPDATE_REPO = "bswy311/blbl"
+    private const val CHANGELOG_URL = "https://github.com/$UPDATE_REPO/raw/main/CHANGELOG.md"
+    private const val RELEASE_DOWNLOAD_BASE = "https://github.com/$UPDATE_REPO/releases/download"
+
     val TEST_CHANGELOG_URL: String
         get() = CHANGELOG_URL
 
@@ -179,7 +181,7 @@ object ApkUpdater {
     fun apkUrlFor(versionName: String): String {
         val cleanVersion = versionName.trim().removePrefix("v")
         val channel = if (BuildConfig.DEBUG) "debug" else "release"
-        return "https://cat3399.top/blbl/blbl-$cleanVersion-$channel.apk"
+        return "$RELEASE_DOWNLOAD_BASE/v$cleanVersion/blbl-android-$cleanVersion-$channel.apk"
     }
 
     private data class VersionHeading(
@@ -205,7 +207,7 @@ object ApkUpdater {
 
     suspend fun downloadApkToCache(
         context: Context,
-        url: String = TEST_APK_URL,
+        url: String,
         onProgress: (Progress) -> Unit,
     ): File {
         onProgress(Progress.Connecting)
