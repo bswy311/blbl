@@ -6,6 +6,9 @@
     <string name="tab_bangumi">番剧</string>
     <string name="tab_cinema">影视</string>
     <string name="tab_popular">热门</string>
+    <string name="tab_weekly">每周必看</string>
+    <string name="weekly_issue_picker_title">选择期数</string>
+    <string name="weekly_issue_switch_hint">按确定键选择期数</string>
     <string name="tab_search">搜索</string>
     <string name="tab_category">分类</string>
     <string name="tab_dynamic">动态</string>

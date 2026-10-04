@@ -5,12 +5,14 @@ import android.os.SystemClock
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import blbl.cat3399.R
 import blbl.cat3399.core.api.BiliApi
+import blbl.cat3399.core.api.WeeklyIssue
 import blbl.cat3399.core.log.AppLog
 import blbl.cat3399.core.model.VideoCard
 import blbl.cat3399.core.net.BiliClient
@@ -23,6 +25,7 @@ import blbl.cat3399.core.ui.GridViewportFillMonitor
 import blbl.cat3399.core.ui.GridSpanPolicy
 import blbl.cat3399.core.ui.TabContentSwitchFocusHost
 import blbl.cat3399.core.ui.TabSwitchFocusTarget
+import blbl.cat3399.core.ui.popup.AppPopup
 import blbl.cat3399.core.ui.postIfAlive
 import blbl.cat3399.core.ui.postIfAttached
 import blbl.cat3399.core.ui.installGridViewportFillMonitor
@@ -39,6 +42,8 @@ class VideoGridFragment : Fragment(), RefreshKeyHandler, TabSwitchFocusTarget {
     private data class PagingKey(
         val page: Int,
         val recommendFetchRow: Int,
+        // "每周必看" issue number; 0 until the newest issue has been resolved.
+        val weeklyIssueNumber: Int = 0,
     )
 
     private data class FetchedPage(
@@ -58,6 +63,9 @@ class VideoGridFragment : Fragment(), RefreshKeyHandler, TabSwitchFocusTarget {
     private val source: String by lazy { requireArguments().getString(ARG_SOURCE) ?: SRC_POPULAR }
     private val rid: Int by lazy { requireArguments().getInt(ARG_RID, 0) }
     private val searchKeyword: String by lazy { requireArguments().getString(ARG_SEARCH_KEYWORD).orEmpty().trim() }
+
+    private var weeklyIssues: List<WeeklyIssue> = emptyList()
+    private var weeklyCurrentIssue: WeeklyIssue? = null
 
     private val loadedStableKeys = HashSet<String>()
     private val paging = PagedGridStateMachine(initialKey = PagingKey(page = 1, recommendFetchRow = 1))
@@ -142,6 +150,7 @@ class VideoGridFragment : Fragment(), RefreshKeyHandler, TabSwitchFocusTarget {
                 callbacks =
                     object : DpadGridController.Callbacks {
                         override fun onTopEdge(): Boolean {
+                            if (focusWeeklyHeaderIfVisible()) return true
                             focusSelectedTabIfAvailable()
                             return true
                         }
@@ -182,6 +191,8 @@ class VideoGridFragment : Fragment(), RefreshKeyHandler, TabSwitchFocusTarget {
             dpadGridController?.parkFocusForDataSetReset()
             resetAndLoad()
         }
+
+        setupWeeklyHeader()
 
         if (preDrawListener == null) {
             preDrawListener =
@@ -234,6 +245,10 @@ class VideoGridFragment : Fragment(), RefreshKeyHandler, TabSwitchFocusTarget {
 
     private fun resetAndLoad() {
         AppLog.d("VideoGrid", "resetAndLoad source=$source rid=$rid t=${SystemClock.uptimeMillis()}")
+        if (source == SRC_WEEKLY) {
+            startWeeklyLoad(issueNumber = weeklyCurrentIssue?.number ?: 0)
+            return
+        }
         paging.reset()
         loadedStableKeys.clear()
         loadNextPage(isRefresh = true)
@@ -527,6 +542,20 @@ class VideoGridFragment : Fragment(), RefreshKeyHandler, TabSwitchFocusTarget {
                 )
             }
 
+            SRC_WEEKLY -> {
+                val issueNumber = key.weeklyIssueNumber
+                if (issueNumber <= 0) {
+                    FetchedPage(items = emptyList(), nextKey = key, hasMore = false)
+                } else {
+                    val content = BiliApi.weeklyIssue(issueNumber)
+                    FetchedPage(
+                        items = content.items,
+                        nextKey = key.copy(page = key.page + 1, weeklyIssueNumber = issueNumber),
+                        hasMore = false,
+                    )
+                }
+            }
+
             SRC_REGION -> {
                 val res = BiliApi.regionRankPage(rid = rid, pn = key.page, ps = ps)
                 FetchedPage(
@@ -565,6 +594,79 @@ class VideoGridFragment : Fragment(), RefreshKeyHandler, TabSwitchFocusTarget {
         }
     }
 
+    private fun setupWeeklyHeader() {
+        if (source != SRC_WEEKLY) return
+        binding.llWeeklyHeader.isVisible = true
+        binding.llWeeklyHeader.setOnClickListener { showWeeklyIssuePicker() }
+        updateWeeklyHeader()
+    }
+
+    private fun updateWeeklyHeader() {
+        val b = _binding ?: return
+        b.tvWeeklyIssue.text = weeklyCurrentIssue?.displayText().orEmpty()
+    }
+
+    private fun focusWeeklyHeaderIfVisible(): Boolean {
+        if (source != SRC_WEEKLY) return false
+        val header = _binding?.llWeeklyHeader ?: return false
+        if (!header.isVisible || !header.isShown) return false
+        return header.requestFocus()
+    }
+
+    /**
+     * Resolves the newest issue when [issueNumber] is 0, then (re)loads that issue.
+     * The paging key is reset first so an in-flight load of the previous issue is dropped.
+     */
+    private fun startWeeklyLoad(issueNumber: Int) {
+        AppLog.d("VideoGrid", "startWeeklyLoad issue=$issueNumber t=${SystemClock.uptimeMillis()}")
+        viewLifecycleOwner.lifecycleScope.launch {
+            val issues =
+                try {
+                    if (weeklyIssues.isEmpty()) BiliApi.weeklyIssues().also { weeklyIssues = it } else weeklyIssues
+                } catch (t: Throwable) {
+                    if (t is CancellationException) throw t
+                    AppLog.e("VideoGrid", "weekly issues failed", t)
+                    _binding?.swipeRefresh?.isRefreshing = false
+                    context?.let { AppToast.show(it, "加载失败，可查看 Logcat(标签 BLBL)") }
+                    return@launch
+                }
+            val issue = issues.firstOrNull { it.number == issueNumber } ?: issues.firstOrNull()
+            if (issue == null) {
+                AppLog.w("VideoGrid", "weekly issues empty")
+                _binding?.swipeRefresh?.isRefreshing = false
+                return@launch
+            }
+            val b = _binding ?: return@launch
+            weeklyCurrentIssue = issue
+            updateWeeklyHeader()
+            paging.resetTo(PagingKey(page = 1, recommendFetchRow = 1, weeklyIssueNumber = issue.number))
+            loadedStableKeys.clear()
+            adapter.submit(emptyList())
+            b.recycler.scrollToPosition(0)
+            loadNextPage(isRefresh = true)
+        }
+    }
+
+    private fun showWeeklyIssuePicker() {
+        val ctx = context ?: return
+        val b = _binding ?: return
+        val issues = weeklyIssues
+        val checkedIndex = issues.indexOfFirst { it.number == weeklyCurrentIssue?.number }.coerceAtLeast(0)
+        AppPopup.singleChoice(
+            context = ctx,
+            title = ctx.getString(R.string.weekly_issue_picker_title),
+            items = issues.map { it.displayText() },
+            checkedIndex = checkedIndex,
+            onRestoreFocus = { b.llWeeklyHeader.requestFocus() },
+        ) { index, _ ->
+            val picked = issues.getOrNull(index) ?: return@singleChoice
+            if (picked.number == weeklyCurrentIssue?.number) return@singleChoice
+            val current = _binding ?: return@singleChoice
+            current.swipeRefresh.isRefreshing = true
+            startWeeklyLoad(issueNumber = picked.number)
+        }
+    }
+
     private fun openDetail(position: Int) {
         requireContext().openVideoDetailFromPlaybackHandle(playbackHandle(), position)
     }
@@ -592,11 +694,13 @@ class VideoGridFragment : Fragment(), RefreshKeyHandler, TabSwitchFocusTarget {
 
         const val SRC_RECOMMEND = "recommend"
         const val SRC_POPULAR = "popular"
+        const val SRC_WEEKLY = "weekly"
         const val SRC_REGION = "region"
         const val SRC_SEARCH = "search"
 
         fun newRecommend() = VideoGridFragment().apply { arguments = Bundle().apply { putString(ARG_SOURCE, SRC_RECOMMEND) } }
         fun newPopular() = VideoGridFragment().apply { arguments = Bundle().apply { putString(ARG_SOURCE, SRC_POPULAR) } }
+        fun newWeekly() = VideoGridFragment().apply { arguments = Bundle().apply { putString(ARG_SOURCE, SRC_WEEKLY) } }
         fun newRegion(rid: Int) = VideoGridFragment().apply {
             arguments = Bundle().apply {
                 putString(ARG_SOURCE, SRC_REGION)

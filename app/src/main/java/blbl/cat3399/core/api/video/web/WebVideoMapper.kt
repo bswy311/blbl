@@ -504,6 +504,21 @@ internal class WebVideoMapper(
         return out
     }
 
+    /**
+     * "每周必看" items reuse the archive shape plus a `rcmd_reason` editor's note that the
+     * generic mapping ignores. Reads it here so archive field mapping stays in one place.
+     */
+    fun parseWeeklySelectedCards(arr: JSONArray): List<VideoCard> {
+        val out = ArrayList<VideoCard>(arr.length())
+        for (i in 0 until arr.length()) {
+            val obj = arr.optJSONObject(i) ?: continue
+            val card = parseVideoCard(obj, index = i) ?: continue
+            val reason = obj.optString("rcmd_reason", "").trim()
+            out += if (reason.isBlank()) card else card.copy(reasonText = reason)
+        }
+        return out
+    }
+
     private fun parseVideoCard(
         obj: JSONObject,
         index: Int,

@@ -16,6 +16,7 @@ data class HomeTabSpec(
 object HomeTabs {
     const val KEY_RECOMMEND = "recommend"
     const val KEY_POPULAR = "popular"
+    const val KEY_WEEKLY = "weekly"
     const val KEY_BANGUMI = "bangumi"
     const val KEY_CINEMA = "cinema"
 
@@ -23,6 +24,7 @@ object HomeTabs {
         listOf(
             HomeTabSpec(KEY_RECOMMEND, R.string.tab_recommend) { VideoGridFragment.newRecommend() },
             HomeTabSpec(KEY_POPULAR, R.string.tab_popular) { VideoGridFragment.newPopular() },
+            HomeTabSpec(KEY_WEEKLY, R.string.tab_weekly) { VideoGridFragment.newWeekly() },
             HomeTabSpec(KEY_BANGUMI, R.string.tab_bangumi) { PgcRecommendGridFragment.newBangumi() },
             HomeTabSpec(KEY_CINEMA, R.string.tab_cinema) { PgcRecommendGridFragment.newCinema() },
         )

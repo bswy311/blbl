@@ -328,11 +328,26 @@
             android:maxLines="2"
             android:textColor="?attr/colorOnSurface"
             android:textSize="@dimen/video_card_title_text_size"
-            app:layout_constraintBottom_toTopOf="@id/ll_subtitle"
+            app:layout_constraintBottom_toTopOf="@id/tv_reason"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintHeight_default="wrap"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toBottomOf="@id/cl_cover" />
+
+        <TextView
+            android:id="@+id/tv_reason"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="@dimen/video_card_text_margin"
+            android:ellipsize="end"
+            android:maxLines="2"
+            android:textColor="?android:attr/textColorSecondary"
+            android:textSize="@dimen/video_card_subtitle_text_size"
+            android:visibility="gone"
+            app:layout_constraintBottom_toTopOf="@id/ll_subtitle"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/tv_title" />
 
         <LinearLayout
             android:id="@+id/ll_subtitle"
@@ -344,7 +359,7 @@
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/tv_title">
+            app:layout_constraintTop_toBottomOf="@id/tv_reason">
 
             <TextView
                 android:id="@+id/tv_subtitle"

@@ -30,6 +30,8 @@ data class VideoCard(
     val progressFinished: Boolean = false,
     // Optional recommendation/search routing id used by web feedback/report flows.
     val trackId: String? = null,
+    // Optional editor's note rendered under the title. Used by "每周必看" (rcmd_reason).
+    val reasonText: String? = null,
 ) {
     fun stableKey(): String =
         when {

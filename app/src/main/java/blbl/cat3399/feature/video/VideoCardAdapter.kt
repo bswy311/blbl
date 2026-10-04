@@ -322,6 +322,10 @@ class VideoCardAdapter(
             binding.tvSubtitle.isVisible = showSubtitleRow && subtitleText.isNotBlank()
             binding.tvPubdate.isVisible = showSubtitleRow && pubDateText.isNotBlank()
 
+            val reasonText = item.reasonText?.trim().orEmpty()
+            binding.tvReason.text = reasonText
+            binding.tvReason.isVisible = !isEpisodeStyleCard && reasonText.isNotBlank()
+
             val showDuration = !isEpisodeStyleCard && watchProgressUi == null && item.durationSec > 0
             binding.tvDuration.isVisible = showDuration
             if (showDuration) {

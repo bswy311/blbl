@@ -268,6 +268,10 @@ object BiliApi {
 
     suspend fun searchDefaultText(): String? = SearchApi.searchDefaultText()
 
+    suspend fun weeklyIssues(): List<WeeklyIssue> = WeeklyApi.issues()
+
+    suspend fun weeklyIssue(number: Int): WeeklyIssueContent = WeeklyApi.issue(number = number)
+
     suspend fun searchHot(limit: Int = 10): List<String> = SearchApi.searchHot(limit = limit)
 
     suspend fun searchSuggest(term: String): List<String> = SearchApi.searchSuggest(term = term)
