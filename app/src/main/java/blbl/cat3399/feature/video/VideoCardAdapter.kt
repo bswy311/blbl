@@ -324,7 +324,7 @@ class VideoCardAdapter(
 
             val reasonText = item.reasonText?.trim().orEmpty()
             binding.tvReason.text = reasonText
-            binding.tvReason.isVisible = !isEpisodeStyleCard && reasonText.isNotBlank()
+            binding.llReason.isVisible = !isEpisodeStyleCard && reasonText.isNotBlank()
 
             val showDuration = !isEpisodeStyleCard && watchProgressUi == null && item.durationSec > 0
             binding.tvDuration.isVisible = showDuration

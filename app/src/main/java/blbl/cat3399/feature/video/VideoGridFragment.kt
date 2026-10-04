@@ -367,6 +367,14 @@ class VideoGridFragment : Fragment(), RefreshKeyHandler, TabSwitchFocusTarget {
         if (!isAdded || _binding == null) return false
         if (!isResumed) return false
 
+        // "每周必看" puts the issue header above the grid, so entering the page lands there instead
+        // of on the first card. Back-to-tab0 stays deterministic on purpose.
+        if (!pendingFocusFirstCardFromBackToTab0 && focusWeeklyHeaderIfVisible()) {
+            lastFocusedAdapterPosition = 0
+            clearPendingFocusFlags()
+            return true
+        }
+
         val focused = activity?.currentFocus
         if (focused != null && focused != binding.recycler && FocusTreeUtils.isDescendantOf(focused, binding.recycler)) {
             // If we are already focused inside the grid, consider the request satisfied, except for

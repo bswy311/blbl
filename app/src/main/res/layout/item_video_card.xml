@@ -334,20 +334,45 @@
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toBottomOf="@id/cl_cover" />
 
-        <TextView
-            android:id="@+id/tv_reason"
+        <LinearLayout
+            android:id="@+id/ll_reason"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_marginHorizontal="@dimen/video_card_text_margin"
-            android:ellipsize="end"
-            android:maxLines="2"
-            android:textColor="?android:attr/textColorSecondary"
-            android:textSize="@dimen/video_card_subtitle_text_size"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
             android:visibility="gone"
             app:layout_constraintBottom_toTopOf="@id/ll_subtitle"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/tv_title" />
+            app:layout_constraintTop_toBottomOf="@id/tv_title">
+
+            <TextView
+                android:id="@+id/tv_reason_tag"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@drawable/blbl_reason_chip_bg"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:paddingStart="6dp"
+                android:paddingTop="1dp"
+                android:paddingEnd="6dp"
+                android:paddingBottom="1dp"
+                android:text="@string/video_card_reason_tag"
+                android:textColor="?attr/colorOnSurface"
+                android:textSize="12sp" />
+
+            <TextView
+                android:id="@+id/tv_reason"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="6dp"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:maxLines="2"
+                android:textColor="?android:attr/textColorSecondary"
+                android:textSize="@dimen/video_card_subtitle_text_size" />
+        </LinearLayout>
 
         <LinearLayout
             android:id="@+id/ll_subtitle"

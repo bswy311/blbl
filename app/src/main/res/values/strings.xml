@@ -9,6 +9,7 @@
     <string name="tab_weekly">每周必看</string>
     <string name="weekly_issue_picker_title">选择期数</string>
     <string name="weekly_issue_switch_hint">按确定键选择期数</string>
+    <string name="video_card_reason_tag">推荐</string>
     <string name="tab_search">搜索</string>
     <string name="tab_category">分类</string>
     <string name="tab_dynamic">动态</string>
