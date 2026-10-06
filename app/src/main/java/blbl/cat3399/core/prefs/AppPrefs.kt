@@ -99,6 +99,11 @@ class AppPrefs(context: Context) {
         get() = loadStringList(KEY_MAIN_CATEGORY_VISIBLE_TABS)
         set(value) = saveStringList(KEY_MAIN_CATEGORY_VISIBLE_TABS, normalizeStringList(value))
 
+    /** Display order of every category zone (hidden ones included); empty = default order. */
+    var mainCategoryTabOrder: List<String>
+        get() = loadStringList(KEY_MAIN_CATEGORY_TAB_ORDER)
+        set(value) = saveStringList(KEY_MAIN_CATEGORY_TAB_ORDER, normalizeStringList(value))
+
     var mainLiveVisibleTabs: List<String>
         get() = loadStringList(KEY_MAIN_LIVE_VISIBLE_TABS)
         set(value) = saveStringList(KEY_MAIN_LIVE_VISIBLE_TABS, normalizeStringList(value))
@@ -1071,6 +1076,7 @@ class AppPrefs(context: Context) {
         private const val KEY_CUSTOM_PAGE_CONFIG = "custom_page_config"
         private const val KEY_MAIN_HOME_VISIBLE_TABS = "main_home_visible_tabs"
         private const val KEY_MAIN_CATEGORY_VISIBLE_TABS = "main_category_visible_tabs"
+        private const val KEY_MAIN_CATEGORY_TAB_ORDER = "main_category_tab_order"
         private const val KEY_MAIN_LIVE_VISIBLE_TABS = "main_live_visible_tabs"
         private const val KEY_MAIN_MY_VISIBLE_TABS = "main_my_visible_tabs"
         private const val KEY_TO_VIEW_PLAY_ALL_ORDER = "to_view_play_all_order"

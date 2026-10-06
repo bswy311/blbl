@@ -1,4 +1,4 @@
-package blbl.cat3399.feature.settings
+﻿package blbl.cat3399.feature.settings
 
 import android.app.Activity
 import android.content.ActivityNotFoundException
@@ -27,6 +27,7 @@ import blbl.cat3399.core.io.DocumentExporter
 import blbl.cat3399.core.log.AppLog
 import blbl.cat3399.core.log.LogExporter
 import blbl.cat3399.core.log.LogUploadClient
+import blbl.cat3399.core.model.Zone
 import blbl.cat3399.core.net.BiliClient
 import blbl.cat3399.core.prefs.AppConfigBackup
 import blbl.cat3399.core.prefs.AppPrefs
@@ -39,6 +40,8 @@ import blbl.cat3399.core.prefs.PlayerPlaybackModes
 import blbl.cat3399.core.prefs.PlayerCustomShortcutsStore
 import blbl.cat3399.core.ui.AppToast
 import blbl.cat3399.core.ui.Immersive
+import blbl.cat3399.core.ui.ThemeColor
+import blbl.cat3399.core.ui.requestFocusAdapterPositionReliable
 import blbl.cat3399.core.ui.popup.AppPopup
 import blbl.cat3399.core.ui.popup.PopupAction
 import blbl.cat3399.core.ui.popup.PopupActionRole
@@ -885,13 +888,7 @@ class SettingsInteractionHandler(
             }
 
             SettingId.MainCategoryVisibleTabs -> {
-                showVisibleTabsDialog(
-                    sectionIndex = state.currentSectionIndex,
-                    focusId = entry.id,
-                    title = "分类页显示页面",
-                    options = CategoryZones.defaultZones.map { CategoryZones.stableKeyFor(it) to it.title },
-                    selectedKeys = prefs.mainCategoryVisibleTabs,
-                ) { prefs.mainCategoryVisibleTabs = it }
+                showCategoryTabsManager(sectionIndex = state.currentSectionIndex, focusId = entry.id)
             }
 
             SettingId.MainLiveVisibleTabs -> {
@@ -1694,6 +1691,272 @@ class SettingsInteractionHandler(
                 renderer.showSection(sectionIndex, focusId = focusId)
             },
         )
+    }
+
+    /**
+     * Manager for the 分类页 tabs; the saved key list doubles as the tab order
+     * (see [CategoryZones.orderedZones]).
+     *
+     * Normal mode: OK toggles a zone's visibility, long-press enters the reorder mode.
+     * Reorder mode: 遥控器上/下键移动当前分区，左/右键跳到相邻分区，返回键退出。
+     *
+     * Order changes and visibility toggles are applied in place (no dialog rebuild) so the list does
+     * not flicker, and the moved row view stays attached so focus follows the zone.
+     */
+    private fun showCategoryTabsManager(
+        sectionIndex: Int,
+        focusId: SettingId,
+    ) {
+        val adjustModeHint = "调整模式：上/下键移动，左/右键换一项，返回键退出"
+
+        fun keyOf(zone: Zone): String = CategoryZones.stableKeyFor(zone)
+
+        fun persistOrder(keys: List<String>) {
+            BiliClient.prefs.mainCategoryTabOrder = keys
+        }
+
+        fun persistShown(keys: List<String>) {
+            BiliClient.prefs.mainCategoryVisibleTabs = keys
+        }
+
+        // The settings row summary is refreshed once on dismiss (below) instead of on every key
+        // press: rebuilding the section behind the dialog on each D-pad move causes visible jank.
+
+        class TabRowVh(itemView: View) : RecyclerView.ViewHolder(itemView) {
+            private val tvLabel: TextView = itemView.findViewById(R.id.tv_label)
+            private val tvCheck: TextView = itemView.findViewById(R.id.tv_check)
+            private val normalTextColor: Int = tvLabel.currentTextColor
+            private val adjustTextColor: Int = ThemeColor.resolve(itemView.context, R.attr.blblAccent, R.color.blbl_purple)
+
+            fun bind(
+                label: String,
+                shown: Boolean,
+                adjustMode: Boolean,
+                onClick: () -> Unit,
+                onLongClick: () -> Unit,
+                onMoveKey: (delta: Int) -> Unit,
+                onNavigateKey: (delta: Int) -> Unit,
+            ) {
+                tvLabel.text = if (shown) label else "$label（已隐藏）"
+                tvLabel.setTextColor(if (adjustMode) adjustTextColor else normalTextColor)
+                tvCheck.visibility = if (shown) View.VISIBLE else View.GONE
+                itemView.setOnClickListener { onClick() }
+                itemView.setOnLongClickListener {
+                    onLongClick()
+                    true
+                }
+                itemView.setOnKeyListener { _, keyCode, event ->
+                    if (event.action != KeyEvent.ACTION_DOWN) return@setOnKeyListener false
+                    if (!adjustMode) {
+                        // Browsing: swallow left/right so focus stays inside the list.
+                        keyCode == KeyEvent.KEYCODE_DPAD_LEFT || keyCode == KeyEvent.KEYCODE_DPAD_RIGHT
+                    } else {
+                        when (keyCode) {
+                            KeyEvent.KEYCODE_DPAD_UP -> {
+                                onMoveKey(-1)
+                                true
+                            }
+                            KeyEvent.KEYCODE_DPAD_DOWN -> {
+                                onMoveKey(1)
+                                true
+                            }
+                            KeyEvent.KEYCODE_DPAD_LEFT -> {
+                                onNavigateKey(-1)
+                                true
+                            }
+                            KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                                onNavigateKey(1)
+                                true
+                            }
+                            else -> false
+                        }
+                    }
+                }
+            }
+        }
+
+        class TabRowAdapter(
+            private val zones: MutableList<Zone>,
+            private val shownKeys: MutableSet<String>,
+            private val keyOf: (Zone) -> String,
+            private val recyclerProvider: () -> RecyclerView?,
+            private val onPersistOrder: (List<String>) -> Unit,
+            private val onPersistShown: (List<String>) -> Unit,
+            private val hint: String,
+            private val onToast: (String) -> Unit,
+        ) : RecyclerView.Adapter<TabRowVh>() {
+            var adjustMode: Boolean = false
+                private set
+
+            override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): TabRowVh {
+                val view = LayoutInflater.from(parent.context).inflate(R.layout.item_popup_choice, parent, false)
+                return TabRowVh(view)
+            }
+
+            override fun onBindViewHolder(holder: TabRowVh, position: Int) {
+                val zone = zones.getOrNull(position) ?: return
+                holder.bind(
+                    label = zone.title,
+                    shown = keyOf(zone) in shownKeys,
+                    adjustMode = adjustMode,
+                    onClick = {
+                        if (adjustMode) {
+                            onToast(hint)
+                        } else {
+                            toggleVisibilityAt(holder.bindingAdapterPosition)
+                        }
+                    },
+                    onLongClick = { toggleAdjustMode() },
+                    onMoveKey = { delta -> moveZoneAt(holder.bindingAdapterPosition, delta) },
+                    onNavigateKey = { delta -> focusSiblingRow(holder.bindingAdapterPosition, delta) },
+                )
+            }
+
+            override fun getItemCount(): Int = zones.size
+
+            fun toggleAdjustMode() {
+                adjustMode = !adjustMode
+                // Rebinding every row in place keeps the focused view attached.
+                notifyItemRangeChanged(0, itemCount)
+                if (adjustMode) onToast(hint)
+            }
+
+            fun exitAdjustMode() {
+                if (!adjustMode) return
+                adjustMode = false
+                notifyItemRangeChanged(0, itemCount)
+            }
+
+            fun resetToDefault(nextZones: List<Zone>) {
+                zones.clear()
+                zones.addAll(nextZones)
+                shownKeys.clear()
+                shownKeys.addAll(zones.map(keyOf))
+                notifyItemRangeChanged(0, itemCount)
+            }
+
+            private fun toggleVisibilityAt(position: Int) {
+                val zone = zones.getOrNull(position) ?: return
+                val key = keyOf(zone)
+                if (key in shownKeys) {
+                    if (shownKeys.size <= 1) {
+                        onToast("至少保留一个显示中的分区")
+                        return
+                    }
+                    shownKeys.remove(key)
+                } else {
+                    shownKeys.add(key)
+                }
+                notifyItemChanged(position)
+                onPersistShown(zones.map(keyOf).filter { it in shownKeys })
+            }
+
+            private fun moveZoneAt(
+                position: Int,
+                delta: Int,
+            ) {
+                val target = position + delta
+                if (position !in zones.indices || target !in zones.indices) {
+                    onToast(if (delta < 0) "已经在最前" else "已经在最后")
+                    return
+                }
+                zones.add(target, zones.removeAt(position))
+                notifyItemMoved(position, target)
+                onPersistOrder(zones.map(keyOf))
+            }
+
+            private fun focusSiblingRow(
+                position: Int,
+                delta: Int,
+            ) {
+                val target = position + delta
+                if (target !in zones.indices) return
+                val recycler = recyclerProvider() ?: return
+                recycler.requestFocusAdapterPositionReliable(
+                    position = target,
+                    smoothScroll = false,
+                    isAlive = { recycler.isAttachedToWindow },
+                    onFocused = {},
+                )
+            }
+        }
+
+        var adapterRef: TabRowAdapter? = null
+        var recyclerRef: RecyclerView? = null
+
+        AppPopup.custom(
+            context = activity,
+            title = "分类页显示与排序",
+            cancelable = true,
+            actions =
+                listOf(
+                    PopupAction(
+                        role = PopupActionRole.NEUTRAL,
+                        text = "重置",
+                        dismissOnClick = false,
+                    ) {
+                        BiliClient.prefs.mainCategoryTabOrder = emptyList()
+                        BiliClient.prefs.mainCategoryVisibleTabs = emptyList()
+                        adapterRef?.resetToDefault(CategoryZones.orderedZones(BiliClient.prefs))
+                        AppToast.show(activity, "已恢复默认顺序")
+                    },
+                    PopupAction(role = PopupActionRole.NEGATIVE, text = "关闭"),
+                ),
+            preferredActionRole = PopupActionRole.NEGATIVE,
+            autoFocus = true,
+            onModalAttached = { modalRoot ->
+                recyclerRef?.let { recycler ->
+                    AppPopup.applyManagedListLayout(
+                        modalRoot = modalRoot,
+                        recycler = recycler,
+                        itemCount = adapterRef?.itemCount ?: 0,
+                        focusIndex = 0,
+                    )
+                }
+            },
+            onDismiss = {
+                renderer.showSection(sectionIndex, focusId = focusId)
+            },
+            onBackPressed = {
+                val adapter = adapterRef
+                if (adapter != null && adapter.adjustMode) {
+                    adapter.exitAdjustMode()
+                    true
+                } else {
+                    false
+                }
+            },
+        ) { dialogContext ->
+            val zones = CategoryZones.orderedZones(BiliClient.prefs).toMutableList()
+            val savedShown = BiliClient.prefs.mainCategoryVisibleTabs
+            val shownKeys: MutableSet<String> =
+                if (savedShown.isEmpty()) zones.mapTo(HashSet()) { keyOf(it) } else savedShown.toMutableSet()
+
+            val recycler =
+                LayoutInflater.from(dialogContext).inflate(R.layout.view_popup_choice_list, null, false) as RecyclerView
+            recycler.layoutManager = LinearLayoutManager(dialogContext)
+            recycler.itemAnimator = null
+            recyclerRef = recycler
+            val adapter =
+                TabRowAdapter(
+                    zones = zones,
+                    shownKeys = shownKeys,
+                    keyOf = ::keyOf,
+                    recyclerProvider = { recyclerRef },
+                    onPersistOrder = ::persistOrder,
+                    onPersistShown = ::persistShown,
+                    hint = adjustModeHint,
+                    onToast = { AppToast.show(activity, it) },
+                )
+            adapterRef = adapter
+            recycler.adapter = adapter
+
+            recycler.post {
+                val holder = recycler.findViewHolderForAdapterPosition(0)
+                (holder?.itemView ?: recycler.getChildAt(0))?.requestFocus()
+            }
+            recycler
+        }
     }
 
     private fun showPlayerOsdButtonsDialog(sectionIndex: Int, focusId: SettingId) {

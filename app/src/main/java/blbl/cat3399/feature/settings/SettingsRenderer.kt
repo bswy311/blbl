@@ -294,8 +294,8 @@ class SettingsRenderer(
                     ),
                     SettingEntry(
                         SettingId.MainCategoryVisibleTabs,
-                        "分类页显示页面",
-                        SettingsText.mainCategoryVisibleTabsText(prefs.mainCategoryVisibleTabs),
+                        "分类页显示与排序",
+                        SettingsText.mainCategoryVisibleTabsText(prefs),
                         null,
                     ),
                     SettingEntry(

@@ -18,3 +18,6 @@ local.properties
 keystore/
 docs/
 libs/
+
+# Local-only agent entry point: see docs/agent-handoff.md (auto-loaded by Copilot).
+/AGENTS.md

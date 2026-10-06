@@ -124,10 +124,16 @@ object SettingsText {
         )
     }
 
+    /** Visible tabs in the order the user arranged them. */
+    fun mainCategoryVisibleTabsText(prefs: AppPrefs): String {
+        return mainCategoryVisibleTabsText(CategoryZones.visibleZones(prefs).map { CategoryZones.stableKeyFor(it) })
+    }
+
     fun mainCategoryVisibleTabsText(selectedKeys: List<String>): String {
         return visibleTabsText(
             options = CategoryZones.defaultZones.map { CategoryZones.stableKeyFor(it) to it.title },
             selectedKeys = selectedKeys,
+            followKeyOrder = true,
         )
     }
 
@@ -145,13 +151,20 @@ object SettingsText {
         )
     }
 
-    private fun visibleTabsText(options: List<Pair<String, String>>, selectedKeys: List<String>): String {
+    private fun visibleTabsText(
+        options: List<Pair<String, String>>,
+        selectedKeys: List<String>,
+        followKeyOrder: Boolean = false,
+    ): String {
         val selected = selectedKeys.takeIf { it.isNotEmpty() }?.toSet()
         val labels =
-            if (selected == null) {
-                options.map { it.second }
-            } else {
-                options.filter { it.first in selected }.map { it.second }
+            when {
+                selected == null -> options.map { it.second }
+                followKeyOrder -> {
+                    val byKey = options.toMap()
+                    selectedKeys.mapNotNull { byKey[it] }.ifEmpty { options.map { it.second } }
+                }
+                else -> options.filter { it.first in selected }.map { it.second }
             }
         if (labels.isEmpty()) return "全部"
         if (labels.size <= 4) return labels.joinToString(separator = " / ")

@@ -52,10 +52,59 @@ object CategoryZones {
 
     fun stableKeyFor(zone: Zone): String = zone.rid?.let { KEY_ZONE_PREFIX + it } ?: KEY_ALL
 
-    fun visibleZones(prefs: AppPrefs): List<Zone> {
-        val selectedKeys = prefs.mainCategoryVisibleTabs
-        if (selectedKeys.isEmpty()) return defaultZones
-        val selected = selectedKeys.toSet()
-        return defaultZones.filter { stableKeyFor(it) in selected }.ifEmpty { defaultZones }
+    fun visibleZones(prefs: AppPrefs): List<Zone> = orderedZones(prefs).filter { isZoneVisible(it, prefs) }
+
+    /** All zones in the order the user arranged, hidden ones included. */
+    fun orderedZones(prefs: AppPrefs): List<Zone> {
+        val saved = prefs.mainCategoryTabOrder
+        if (saved.isEmpty()) return defaultOrderWithVisibleTabsFirst(prefs)
+        val byKey = defaultZones.associateBy { stableKeyFor(it) }
+        val out = ArrayList<Zone>(saved.size)
+        val seen = HashSet<String>(saved.size * 2)
+        for (raw in saved) {
+            val key = raw.trim()
+            if (!seen.add(key)) continue
+            byKey[key]?.let { out += it }
+        }
+        return out + defaultZones.filter { stableKeyFor(it) !in seen }
+    }
+
+    /** Visibility is stored as a key list; an empty list means "show every zone". */
+    fun isZoneVisible(
+        zone: Zone,
+        prefs: AppPrefs,
+    ): Boolean {
+        val keys = prefs.mainCategoryVisibleTabs
+        return keys.isEmpty() || stableKeyFor(zone) in keys
+    }
+
+    /**
+     * Order used before the user ever reordered anything: the (possibly ordered) visible tabs come
+     * first so existing selections keep their order, the rest follow in default order.
+     */
+    private fun defaultOrderWithVisibleTabsFirst(prefs: AppPrefs): List<Zone> {
+        val visible = orderZonesByKeys(defaultZones, prefs.mainCategoryVisibleTabs)
+        val shown = visible.mapTo(HashSet()) { stableKeyFor(it) }
+        return visible + defaultZones.filter { stableKeyFor(it) !in shown }
+    }
+
+    /**
+     * Applies a user-defined order: zones follow [keys] and keys that no longer match a zone are
+     * dropped.
+     */
+    internal fun orderZonesByKeys(
+        zones: List<Zone>,
+        keys: List<String>,
+    ): List<Zone> {
+        if (keys.isEmpty()) return emptyList()
+        val byKey = zones.associateBy { stableKeyFor(it) }
+        val out = ArrayList<Zone>(keys.size)
+        val seen = HashSet<String>(keys.size * 2)
+        for (raw in keys) {
+            val key = raw.trim()
+            if (!seen.add(key)) continue
+            byKey[key]?.let { out += it }
+        }
+        return out
     }
 }
