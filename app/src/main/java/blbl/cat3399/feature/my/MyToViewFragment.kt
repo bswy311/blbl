@@ -15,11 +15,10 @@ import blbl.cat3399.core.api.BiliApi
 import blbl.cat3399.core.log.AppLog
 import blbl.cat3399.core.net.BiliClient
 import blbl.cat3399.core.prefs.AppPrefs
-import blbl.cat3399.core.prefs.ToViewPlayAllOrder
+import blbl.cat3399.core.prefs.PlayAllOrder
 import blbl.cat3399.core.ui.AppToast
 import blbl.cat3399.core.ui.DpadGridController
 import blbl.cat3399.core.ui.FocusTreeUtils
-import blbl.cat3399.core.ui.popup.AppPopup
 import blbl.cat3399.core.ui.postIfAlive
 import blbl.cat3399.core.ui.requestFocusFirstItemOrSelfAfterRefresh
 import blbl.cat3399.databinding.FragmentVideoGridBinding
@@ -189,17 +188,8 @@ class MyToViewFragment : Fragment(), MyTabSwitchFocusTarget, RefreshKeyHandler {
 
     private fun updatePlayOrderLabel() {
         val b = _binding ?: return
-        val current = ToViewPlayAllOrder.normalize(BiliClient.prefs.toViewPlayAllOrder)
-        b.btnPlayOrder.text = b.root.context.getString(R.string.my_toview_play_order_button, b.root.context.getString(playOrderLabelRes(current)))
+        b.btnPlayOrder.text = PlayAllOrderUi.orderButtonText(b.root.context, BiliClient.prefs.toViewPlayAllOrder)
     }
-
-    private fun playOrderLabelRes(order: String): Int =
-        when (order) {
-            ToViewPlayAllOrder.DURATION_ASC -> R.string.my_toview_order_duration_asc
-            ToViewPlayAllOrder.REVERSE -> R.string.my_toview_order_reverse
-            ToViewPlayAllOrder.SHUFFLE -> R.string.my_toview_order_shuffle
-            else -> R.string.my_toview_order_sequential
-        }
 
     private fun focusPlayAllHeader(): Boolean {
         val b = _binding ?: return false
@@ -218,11 +208,11 @@ class MyToViewFragment : Fragment(), MyTabSwitchFocusTarget, RefreshKeyHandler {
         val ctx = context ?: return
         val cards = if (::adapter.isInitialized) adapter.snapshot() else emptyList()
         if (cards.isEmpty()) {
-            AppToast.show(ctx, ctx.getString(R.string.my_toview_play_all_empty))
+            AppToast.show(ctx, ctx.getString(R.string.play_all_empty_toview))
             return
         }
-        val order = ToViewPlayAllOrder.normalize(BiliClient.prefs.toViewPlayAllOrder)
-        val ordered = ToViewPlayAllOrder.apply(cards, order)
+        val order = PlayAllOrder.normalize(BiliClient.prefs.toViewPlayAllOrder)
+        val ordered = PlayAllOrder.apply(cards, order)
         BiliClient.prefs.playerPlaybackMode = AppPrefs.PLAYER_PLAYBACK_MODE_PAGE_LIST
         AppLog.i("MyToView", "playAll size=${ordered.size} order=$order")
         ctx.openPlayerFromPlaybackSource(
@@ -239,16 +229,11 @@ class MyToViewFragment : Fragment(), MyTabSwitchFocusTarget, RefreshKeyHandler {
     private fun showPlayOrderPicker() {
         val ctx = context ?: return
         val b = _binding ?: return
-        val orders = ToViewPlayAllOrder.ordered
-        val current = ToViewPlayAllOrder.normalize(BiliClient.prefs.toViewPlayAllOrder)
-        AppPopup.singleChoice(
+        PlayAllOrderUi.showOrderPicker(
             context = ctx,
-            title = ctx.getString(R.string.my_toview_play_order_title),
-            items = orders.map { ctx.getString(playOrderLabelRes(it)) },
-            checkedIndex = orders.indexOf(current).coerceAtLeast(0),
-            onRestoreFocus = { b.btnPlayOrder.requestFocus() },
-        ) { index, _ ->
-            val picked = orders.getOrNull(index) ?: return@singleChoice
+            currentOrder = BiliClient.prefs.toViewPlayAllOrder,
+            restoreFocusTarget = b.btnPlayOrder,
+        ) { picked ->
             BiliClient.prefs.toViewPlayAllOrder = picked
             updatePlayOrderLabel()
         }

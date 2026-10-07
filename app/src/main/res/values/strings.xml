@@ -26,14 +26,18 @@
     <string name="my_tab_bangumi">追番</string>
     <string name="my_tab_drama">追剧</string>
     <string name="my_tab_toview">稍后再看</string>
-    <string name="my_toview_play_all">播放全部</string>
-    <string name="my_toview_play_order_button">顺序：%1$s</string>
-    <string name="my_toview_play_order_title">播放顺序</string>
-    <string name="my_toview_order_sequential">顺序播放</string>
-    <string name="my_toview_order_duration_asc">按时长由短至长</string>
-    <string name="my_toview_order_reverse">倒序播放</string>
-    <string name="my_toview_order_shuffle">随机播放</string>
-    <string name="my_toview_play_all_empty">稍后再看列表为空</string>
+    <string name="play_all">播放全部</string>
+    <string name="play_all_order_button">播放顺序：%1$s</string>
+    <string name="play_all_order_title">播放顺序</string>
+    <string name="play_all_order_shuffle">随机播放</string>
+    <string name="play_all_order_sequential">顺序播放</string>
+    <string name="play_all_order_reverse">倒序播放</string>
+    <string name="play_all_order_duration_asc">时长顺序播放</string>
+    <string name="play_all_order_duration_desc">时长倒序播放</string>
+    <string name="play_all_empty_toview">稍后再看列表为空</string>
+    <string name="play_all_empty_fav">这个收藏夹还没有内容</string>
+    <string name="play_all_loading_fav">正在加载收藏夹内容…</string>
+    <string name="play_all_loading_fav_count">正在加载收藏夹内容…已加载 %1$d 个</string>
     <string name="my_tab_like">最近点赞</string>
 
     <string name="my_need_login">该页面需要登录</string>

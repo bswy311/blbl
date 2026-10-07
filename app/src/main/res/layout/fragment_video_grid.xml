@@ -72,7 +72,7 @@
             android:paddingTop="8dp"
             android:paddingEnd="16dp"
             android:paddingBottom="8dp"
-            android:text="@string/my_toview_play_all"
+            android:text="@string/play_all"
             android:textColor="?attr/colorOnSurface"
             android:textSize="20sp"
             android:textStyle="bold" />

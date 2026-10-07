@@ -4,6 +4,7 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.GridLayoutManager
@@ -13,6 +14,8 @@ import blbl.cat3399.core.api.BiliApi
 import blbl.cat3399.core.log.AppLog
 import blbl.cat3399.R
 import blbl.cat3399.core.net.BiliClient
+import blbl.cat3399.core.prefs.AppPrefs
+import blbl.cat3399.core.prefs.PlayAllOrder
 import blbl.cat3399.core.ui.AppToast
 import blbl.cat3399.core.ui.BackButtonSizingHelper
 import blbl.cat3399.core.ui.DpadGridController
@@ -20,6 +23,7 @@ import blbl.cat3399.core.ui.GridViewportFillMonitor
 import blbl.cat3399.core.ui.UiScale
 import blbl.cat3399.core.ui.postIfAlive
 import blbl.cat3399.core.ui.installGridViewportFillMonitor
+import blbl.cat3399.core.ui.popup.AppPopup
 import blbl.cat3399.core.ui.requestFocusFirstItemOrSelfAfterRefresh
 import blbl.cat3399.core.ui.setTextSizePxIfChanged
 import blbl.cat3399.core.ui.uiScaler
@@ -29,14 +33,17 @@ import blbl.cat3399.feature.player.VideoCardPlaylistPage
 import blbl.cat3399.feature.video.VideoCardActionController
 import blbl.cat3399.feature.video.VideoCardAdapter
 import blbl.cat3399.feature.video.VideoCardDismissBehavior
+import blbl.cat3399.feature.video.VideoCardPlaybackSource
 import blbl.cat3399.feature.video.VideoCardVisibilityFilter
 import blbl.cat3399.feature.video.buildPagedVideoCardPlaybackHandle
 import blbl.cat3399.feature.video.defaultVideoCardPlaylistItem
+import blbl.cat3399.feature.video.openPlayerFromPlaybackSource
 import blbl.cat3399.feature.video.openVideoDetailFromPlaybackHandle
 import blbl.cat3399.feature.video.openVideoFromPlaybackHandle
 import blbl.cat3399.feature.video.removeVideoCardAndRestoreFocus
 import blbl.cat3399.ui.RefreshKeyHandler
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 class MyFavFolderDetailFragment : Fragment(), RefreshKeyHandler {
@@ -58,6 +65,8 @@ class MyFavFolderDetailFragment : Fragment(), RefreshKeyHandler {
     private var pendingFocusFirstItem: Boolean = false
     private var dpadGridController: DpadGridController? = null
     private var viewportFillMonitor: GridViewportFillMonitor? = null
+    private var lastFocusedHeaderView: View? = null
+    private var playAllJob: Job? = null
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         _binding = FragmentMyFavFolderDetailBinding.inflate(inflater, container, false)
@@ -68,6 +77,7 @@ class MyFavFolderDetailFragment : Fragment(), RefreshKeyHandler {
         binding.btnBack.setOnClickListener { parentFragmentManager.popBackStackImmediate() }
         binding.tvTitle.text = title.ifBlank { getString(R.string.my_fav_default_title) }
         applyHeaderSizing(uiScale = UiScale.factor(requireContext()))
+        setupPlayAllHeader()
 
         if (!::adapter.isInitialized) {
             val actionController =
@@ -126,6 +136,7 @@ class MyFavFolderDetailFragment : Fragment(), RefreshKeyHandler {
                 callbacks =
                     object : DpadGridController.Callbacks {
                         override fun onTopEdge(): Boolean {
+                            if (focusPlayAllHeader()) return true
                             binding.btnBack.requestFocus()
                             return true
                         }
@@ -174,6 +185,8 @@ class MyFavFolderDetailFragment : Fragment(), RefreshKeyHandler {
     override fun onResume() {
         super.onResume()
         applyBackButtonSizing()
+        // The order picker may have been changed on another folder entry of the same folder.
+        updatePlayOrderLabel()
         (binding.recycler.layoutManager as? GridLayoutManager)?.spanCount = spanCountForWidth(resources)
         viewportFillMonitor?.scheduleCheck()
     }
@@ -208,6 +221,108 @@ class MyFavFolderDetailFragment : Fragment(), RefreshKeyHandler {
         dpadGridController?.parkFocusForDataSetReset()
         resetAndLoad()
         return true
+    }
+
+    private fun setupPlayAllHeader() {
+        val b = _binding ?: return
+        b.btnPlayAll.setOnClickListener { startPlayAll() }
+        b.btnPlayOrder.setOnClickListener { showPlayOrderPicker() }
+        b.btnPlayAll.setOnFocusChangeListener { _, hasFocus -> if (hasFocus) lastFocusedHeaderView = b.btnPlayAll }
+        b.btnPlayOrder.setOnFocusChangeListener { _, hasFocus -> if (hasFocus) lastFocusedHeaderView = b.btnPlayOrder }
+        updatePlayOrderLabel()
+    }
+
+    private fun updatePlayOrderLabel() {
+        val b = _binding ?: return
+        b.btnPlayOrder.text =
+            PlayAllOrderUi.orderButtonText(
+                context = b.root.context,
+                order = BiliClient.prefs.favFolderPlayAllOrder(mediaId),
+            )
+    }
+
+    private fun focusPlayAllHeader(): Boolean {
+        val b = _binding ?: return false
+        val header = b.llPlayAllHeader
+        if (!header.isVisible || !header.isShown) return false
+        val target = lastFocusedHeaderView?.takeIf { it.parent === header } ?: b.btnPlayAll
+        return target.requestFocus()
+    }
+
+    private fun showPlayOrderPicker() {
+        val b = _binding ?: return
+        PlayAllOrderUi.showOrderPicker(
+            context = requireContext(),
+            currentOrder = BiliClient.prefs.favFolderPlayAllOrder(mediaId),
+            restoreFocusTarget = b.btnPlayOrder,
+        ) { picked ->
+            BiliClient.prefs.setFavFolderPlayAllOrder(mediaId, picked)
+            updatePlayOrderLabel()
+        }
+    }
+
+    /**
+     * 播放全部：收藏夹是分页接口，先把还没加载的页全部拉下来再交给播放器，这样随机/时长排序
+     * 对收藏夹里的每个视频都成立；拉取期间给一个可取消的进度弹窗。
+     */
+    private fun startPlayAll() {
+        if (playAllJob?.isActive == true) return
+        if (!::adapter.isInitialized) return
+        val ctx = context ?: return
+        val order = PlayAllOrder.normalize(BiliClient.prefs.favFolderPlayAllOrder(mediaId))
+        var finished = false
+        val progress =
+            AppPopup.progress(
+                context = ctx,
+                title = ctx.getString(R.string.play_all),
+                status = ctx.getString(R.string.play_all_loading_fav),
+                cancelable = true,
+                onNegative = { playAllJob?.cancel() },
+                onDismiss = { if (!finished) playAllJob?.cancel() },
+            )
+        playAllJob =
+            viewLifecycleOwner.lifecycleScope.launch {
+                try {
+                    val loaded = adapter.snapshot()
+                    val seen = loaded.mapTo(HashSet()) { it.stableKey() }
+                    val all = ArrayList(loaded)
+                    var nextPage = page
+                    var hasMore = !endReached
+                    while (hasMore) {
+                        val res = BiliApi.favFolderResources(mediaId = mediaId, pn = nextPage, ps = 20)
+                        val fresh = VideoCardVisibilityFilter.filterVisibleFresh(res.items, seen)
+                        fresh.forEach { seen.add(it.stableKey()) }
+                        all.addAll(fresh)
+                        nextPage++
+                        hasMore = res.hasMore
+                        progress?.updateStatus(ctx.getString(R.string.play_all_loading_fav_count, all.size))
+                    }
+                    if (all.isEmpty()) {
+                        AppToast.show(ctx, ctx.getString(R.string.play_all_empty_fav))
+                        return@launch
+                    }
+                    val ordered = PlayAllOrder.apply(all, order)
+                    AppLog.i("MyFavDetail", "playAll mediaId=$mediaId size=${ordered.size} order=$order")
+                    // The player only walks the playlist in 播放列表 mode, otherwise it stops after
+                    // the first video (same as 稍后再看).
+                    BiliClient.prefs.playerPlaybackMode = AppPrefs.PLAYER_PLAYBACK_MODE_PAGE_LIST
+                    ctx.openPlayerFromPlaybackSource(
+                        playbackSource =
+                            VideoCardPlaybackSource(
+                                cards = ordered,
+                                source = "MyFavFolderPlayAll:$mediaId",
+                            ),
+                        position = 0,
+                    )
+                } catch (t: Throwable) {
+                    if (t is CancellationException) throw t
+                    AppLog.e("MyFavDetail", "playAll failed mediaId=$mediaId", t)
+                    AppToast.show(ctx, "加载失败，可查看 Logcat(标签 BLBL)")
+                } finally {
+                    finished = true
+                    progress?.dismiss()
+                }
+            }
     }
 
     private fun resetAndLoad() {
@@ -275,6 +390,8 @@ class MyFavFolderDetailFragment : Fragment(), RefreshKeyHandler {
     }
 
     override fun onDestroyView() {
+        playAllJob?.cancel()
+        playAllJob = null
         dpadGridController?.release()
         dpadGridController = null
         viewportFillMonitor?.release()

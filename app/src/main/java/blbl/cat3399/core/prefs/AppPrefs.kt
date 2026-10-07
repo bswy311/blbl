@@ -113,8 +113,21 @@ class AppPrefs(context: Context) {
         set(value) = saveStringList(KEY_MAIN_MY_VISIBLE_TABS, normalizeStringList(value))
 
     var toViewPlayAllOrder: String
-        get() = ToViewPlayAllOrder.normalize(prefs.getString(KEY_TO_VIEW_PLAY_ALL_ORDER, null))
-        set(value) = prefs.edit().putString(KEY_TO_VIEW_PLAY_ALL_ORDER, ToViewPlayAllOrder.normalize(value)).apply()
+        get() = PlayAllOrder.normalize(prefs.getString(KEY_TO_VIEW_PLAY_ALL_ORDER, null))
+        set(value) = prefs.edit().putString(KEY_TO_VIEW_PLAY_ALL_ORDER, PlayAllOrder.normalize(value)).apply()
+
+    /** 每个收藏夹各自记住自己的「播放全部」顺序。 */
+    fun favFolderPlayAllOrder(mediaId: Long): String =
+        PlayAllOrder.normalize(prefs.getString(favFolderPlayAllOrderKey(mediaId), null))
+
+    fun setFavFolderPlayAllOrder(
+        mediaId: Long,
+        order: String,
+    ) {
+        prefs.edit().putString(favFolderPlayAllOrderKey(mediaId), PlayAllOrder.normalize(order)).apply()
+    }
+
+    private fun favFolderPlayAllOrderKey(mediaId: Long): String = "$KEY_FAV_FOLDER_PLAY_ALL_ORDER_PREFIX$mediaId"
 
     var followingListOrder: String
         get() {
@@ -1080,6 +1093,7 @@ class AppPrefs(context: Context) {
         private const val KEY_MAIN_LIVE_VISIBLE_TABS = "main_live_visible_tabs"
         private const val KEY_MAIN_MY_VISIBLE_TABS = "main_my_visible_tabs"
         private const val KEY_TO_VIEW_PLAY_ALL_ORDER = "to_view_play_all_order"
+        private const val KEY_FAV_FOLDER_PLAY_ALL_ORDER_PREFIX = "fav_folder_play_all_order_"
         private const val KEY_FOLLOWING_LIST_ORDER = "following_list_order"
         private const val KEY_DYNAMIC_FOLLOWING_RECENT_UPDATE_DOT_ENABLED = "dynamic_following_recent_update_dot_enabled"
         private const val KEY_AUTO_UPDATE_CHECK_ENABLED = "auto_update_check_enabled"
