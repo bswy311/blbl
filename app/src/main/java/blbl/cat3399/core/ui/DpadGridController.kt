@@ -168,8 +168,13 @@ internal class DpadGridController(
                     if (pendingFocusAfterLoadMoreAnchorPos != RecyclerView.NO_POSITION) {
                         clearPendingFocusAfterLoadMore()
                     }
-                    // We intentionally don't add special handling here: let the system focus-search
-                    // move focus out of the RecyclerView (e.g. to tabs/header) if applicable.
+                    // Focus sitting on this RecyclerView while no card holds it is invisible (the
+                    // default focus highlight is suppressed), and letting UP escape here is what
+                    // made focus jump to the tab strip — where tabs select on focus, so the page
+                    // changed by accident. Recover onto a card first.
+                    if (recoverFocusOntoCardWhileRecyclerFocused()) return@OnKeyListener true
+                    // Otherwise we intentionally don't add special handling: let the system
+                    // focus-search move focus out of the RecyclerView (e.g. to tabs/header).
                     false
                 }
 
@@ -179,6 +184,19 @@ internal class DpadGridController(
                     if (pendingFocusAfterLoadMoreAnchorPos != RecyclerView.NO_POSITION) {
                         clearPendingFocusAfterLoadMore()
                     }
+                    // Without this, LEFT/RIGHT do nothing at all in the parked state above.
+                    if (recoverFocusOntoCardWhileRecyclerFocused()) return@OnKeyListener true
+                    false
+                }
+
+                KeyEvent.KEYCODE_DPAD_CENTER,
+                KeyEvent.KEYCODE_ENTER,
+                KeyEvent.KEYCODE_NUMPAD_ENTER,
+                -> {
+                    // Nothing else handles OK while the RecyclerView itself is focused, so use it to
+                    // bring the focus indicator back onto a card. The press is consumed on purpose:
+                    // it should not activate whatever happened to be focused before.
+                    if (recoverFocusOntoCardWhileRecyclerFocused()) return@OnKeyListener true
                     false
                 }
 
@@ -449,6 +467,54 @@ internal class DpadGridController(
     private fun markVerticalNav(direction: Int) {
         lastVerticalNavAtMs = SystemClock.uptimeMillis()
         lastVerticalNavDirection = direction
+    }
+
+    /**
+     * This RecyclerView can end up holding focus while no card does. The controller suppresses the
+     * RecyclerView's own focus highlight (see [suppressRecyclerDefaultFocusHighlight]), so that state
+     * looks like "nothing is focused": LEFT/RIGHT appear dead, OK does nothing, and UP escapes to the
+     * tab strip (where tabs select on focus, so the page changes by accident).
+     *
+     * Normal navigation hands focus back through a posted retry after the focused card is recycled;
+     * when that retry misses its window (fast LEFT/RIGHT), nothing recovers the focus by itself. This
+     * makes the next key press self-heal instead of stranding the user.
+     *
+     * @return true when focus was handed back to a card (or a retry is already on its way), so the
+     *         caller consumes the key press rather than letting the system focus-search escape.
+     */
+    private fun recoverFocusOntoCardWhileRecyclerFocused(): Boolean {
+        if (!installed) return false
+        if (!config.isEnabled()) return false
+
+        val adapter = recyclerView.adapter ?: return false
+        val itemCount = adapter.itemCount
+        if (itemCount <= 0) return false
+
+        val focused = recyclerView.rootView?.findFocus()
+        if (focused != null && focused !== recyclerView && FocusTreeUtils.isDescendantOf(focused, recyclerView)) {
+            return false
+        }
+
+        // Prefer the card the user was on, then whatever is already on screen — both avoid scrolling.
+        // Only if layout is not ready do we fall back to the last known card (which may scroll back):
+        // the alternative there is leaving the user stranded on an invisible focus target.
+        val visibleAnchor =
+            lastKnownFocusedAdapterPos.takeIf { it in 0 until itemCount && isAdapterPositionPartiallyVisible(it) }
+                ?: (firstVisibleAdapterPosition() ?: RecyclerView.NO_POSITION).takeIf { it in 0 until itemCount }
+        val anchor =
+            visibleAnchor
+                ?: lastKnownFocusedAdapterPos.takeIf { it in 0 until itemCount }
+                ?: return false
+
+        // A leftover park override prefers this RecyclerView over its children; release it first.
+        unparkFocusInRecyclerViewIfNeeded()
+        scrollAndFocusAdapterPosition(anchor, smooth = false)
+        return true
+    }
+
+    private fun isAdapterPositionPartiallyVisible(position: Int): Boolean {
+        val itemView = recyclerView.findViewHolderForAdapterPosition(position)?.itemView ?: return false
+        return isPartiallyVisibleInRecycler(itemView)
     }
 
     private fun rememberLastKnownFocus(position: Int) {
