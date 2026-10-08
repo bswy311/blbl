@@ -40,6 +40,9 @@ android {
     buildTypes {
         debug {
             isMinifyEnabled = false
+            // 单独的 applicationId，让调试包能和正式版同时装在一台设备上（Android 是按包名区分
+            // 已安装应用的，同包名只能存在一个）。代价是这个包有自己独立的数据，需要单独登录。
+            applicationIdSuffix = ".debug"
         }
         release {
             isMinifyEnabled = true
