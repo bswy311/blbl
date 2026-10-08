@@ -372,18 +372,33 @@ class MainActivity : BaseActivity(), SidebarFocusHost {
                 if (dispatchRefreshKeyToCurrentPage()) return true
             }
 
-            val focused = currentFocus
+            var focused = currentFocus
             if (focused == null && isNavKey(event.keyCode)) {
-                // During adapter updates, focus can be temporarily lost. If we were in main very
-                // recently, keep the event consumed (and keep focus-escape guards active) instead
-                // of forcing focus back into sidebar.
-                val now = SystemClock.uptimeMillis()
-                if (now - lastMainFocusAtMs <= 1_000L) {
+                // Lists can drop focus entirely while they rebuild. We used to only swallow the key
+                // for up to 1s and then dump focus into the sidebar, so the remote felt dead and the
+                // fallback could surprise-navigate (a focused tab selects itself / the sidebar
+                // selection changes the page). Try to put focus back into the current page first.
+                val recovered = focusMainFromSidebar()
+                val restored = currentFocus
+                if (restored != null) {
+                    focused = restored
+                    // Let direction keys navigate from the restored focus right away, but swallow
+                    // activation keys so a stale press cannot open whatever had focus before.
+                    if (!isDirectionKey(event.keyCode)) return true
+                } else if (recovered) {
+                    // Focus was requested asynchronously; swallow this press while it settles.
+                    return true
+                } else {
+                    // Nothing focusable in the current page (e.g. it is still being created). Keep
+                    // the old behavior: ignore keys briefly, then fall back to the sidebar.
+                    val now = SystemClock.uptimeMillis()
+                    if (now - lastMainFocusAtMs <= 1_000L) {
+                        return true
+                    }
+                    if (event.repeatCount > 0) return true
+                    ensureInitialFocus()
                     return true
                 }
-                if (event.repeatCount > 0) return true
-                ensureInitialFocus()
-                return true
             }
 
             when (event.keyCode) {
@@ -1425,6 +1440,13 @@ class MainActivity : BaseActivity(), SidebarFocusHost {
     private fun dp(valueDp: Float): Int {
         val dm = resources.displayMetrics
         return (valueDp * dm.density).toInt()
+    }
+
+    private fun isDirectionKey(keyCode: Int): Boolean {
+        return keyCode == KeyEvent.KEYCODE_DPAD_UP ||
+            keyCode == KeyEvent.KEYCODE_DPAD_DOWN ||
+            keyCode == KeyEvent.KEYCODE_DPAD_LEFT ||
+            keyCode == KeyEvent.KEYCODE_DPAD_RIGHT
     }
 
     private fun isNavKey(keyCode: Int): Boolean {
