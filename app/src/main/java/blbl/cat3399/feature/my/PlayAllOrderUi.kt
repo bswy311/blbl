@@ -15,8 +15,8 @@ internal object PlayAllOrderUi {
         when (PlayAllOrder.normalize(order)) {
             PlayAllOrder.SHUFFLE -> R.string.play_all_order_shuffle
             PlayAllOrder.REVERSE -> R.string.play_all_order_reverse
-            PlayAllOrder.DURATION_ASC -> R.string.play_all_order_duration_asc
-            PlayAllOrder.DURATION_DESC -> R.string.play_all_order_duration_desc
+            PlayAllOrder.DURATION_LONG_FIRST -> R.string.play_all_order_duration_long_first
+            PlayAllOrder.DURATION_SHORT_FIRST -> R.string.play_all_order_duration_short_first
             else -> R.string.play_all_order_sequential
         }
 

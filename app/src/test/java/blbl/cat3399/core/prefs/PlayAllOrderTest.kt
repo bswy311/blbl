@@ -39,8 +39,15 @@ class PlayAllOrderTest {
     fun normalize_should_accept_known_orders_and_trim() {
         assertEquals(PlayAllOrder.REVERSE, PlayAllOrder.normalize(" reverse "))
         assertEquals(PlayAllOrder.SHUFFLE, PlayAllOrder.normalize("shuffle"))
-        assertEquals(PlayAllOrder.DURATION_ASC, PlayAllOrder.normalize("duration_asc"))
-        assertEquals(PlayAllOrder.DURATION_DESC, PlayAllOrder.normalize("duration_desc"))
+        assertEquals(PlayAllOrder.DURATION_LONG_FIRST, PlayAllOrder.normalize("duration_long_first"))
+        assertEquals(PlayAllOrder.DURATION_SHORT_FIRST, PlayAllOrder.normalize("duration_short_first"))
+    }
+
+    @Test
+    fun normalize_should_migrate_legacy_duration_values_by_behaviour() {
+        // 旧值当时 asc=短→长、desc=长→短；按"行为等价"迁移，别让用户已选的值变成默认值。
+        assertEquals(PlayAllOrder.DURATION_SHORT_FIRST, PlayAllOrder.normalize("duration_asc"))
+        assertEquals(PlayAllOrder.DURATION_LONG_FIRST, PlayAllOrder.normalize("duration_desc"))
     }
 
     @Test
@@ -58,36 +65,36 @@ class PlayAllOrderTest {
     }
 
     @Test
-    fun apply_duration_asc_should_sort_ascending() {
+    fun apply_duration_short_first_should_sort_ascending() {
         val cards = listOf(card("a", 300), card("b", 10), card("c", 120))
 
-        assertEquals(listOf("b", "c", "a"), ids(PlayAllOrder.apply(cards, PlayAllOrder.DURATION_ASC)))
+        assertEquals(listOf("b", "c", "a"), ids(PlayAllOrder.apply(cards, PlayAllOrder.DURATION_SHORT_FIRST)))
     }
 
     @Test
-    fun apply_duration_desc_should_sort_descending() {
+    fun apply_duration_long_first_should_sort_descending() {
         val cards = listOf(card("a", 300), card("b", 10), card("c", 120))
 
-        assertEquals(listOf("a", "c", "b"), ids(PlayAllOrder.apply(cards, PlayAllOrder.DURATION_DESC)))
+        assertEquals(listOf("a", "c", "b"), ids(PlayAllOrder.apply(cards, PlayAllOrder.DURATION_LONG_FIRST)))
     }
 
     @Test
-    fun apply_duration_asc_should_push_unknown_durations_last_and_keep_them_stable() {
+    fun apply_duration_short_first_should_push_unknown_durations_last_and_keep_them_stable() {
         val cards = listOf(card("unknown1", 0), card("long", 500), card("unknown2", 0), card("short", 20))
 
         assertEquals(
             listOf("short", "long", "unknown1", "unknown2"),
-            ids(PlayAllOrder.apply(cards, PlayAllOrder.DURATION_ASC)),
+            ids(PlayAllOrder.apply(cards, PlayAllOrder.DURATION_SHORT_FIRST)),
         )
     }
 
     @Test
-    fun apply_duration_desc_should_push_unknown_durations_last_and_keep_them_stable() {
+    fun apply_duration_long_first_should_push_unknown_durations_last_and_keep_them_stable() {
         val cards = listOf(card("unknown1", 0), card("long", 500), card("unknown2", 0), card("short", 20))
 
         assertEquals(
             listOf("long", "short", "unknown1", "unknown2"),
-            ids(PlayAllOrder.apply(cards, PlayAllOrder.DURATION_DESC)),
+            ids(PlayAllOrder.apply(cards, PlayAllOrder.DURATION_LONG_FIRST)),
         )
     }
 
@@ -118,7 +125,7 @@ class PlayAllOrderTest {
 
         assertEquals(single, PlayAllOrder.apply(single, PlayAllOrder.REVERSE))
         assertEquals(single, PlayAllOrder.apply(single, PlayAllOrder.SHUFFLE))
-        assertEquals(single, PlayAllOrder.apply(single, PlayAllOrder.DURATION_DESC))
+        assertEquals(single, PlayAllOrder.apply(single, PlayAllOrder.DURATION_LONG_FIRST))
         assertEquals(emptyList<VideoCard>(), PlayAllOrder.apply(emptyList(), PlayAllOrder.SHUFFLE))
     }
 
@@ -129,8 +136,8 @@ class PlayAllOrderTest {
                 PlayAllOrder.SHUFFLE,
                 PlayAllOrder.SEQUENTIAL,
                 PlayAllOrder.REVERSE,
-                PlayAllOrder.DURATION_ASC,
-                PlayAllOrder.DURATION_DESC,
+                PlayAllOrder.DURATION_LONG_FIRST,
+                PlayAllOrder.DURATION_SHORT_FIRST,
             ),
             PlayAllOrder.ordered,
         )
