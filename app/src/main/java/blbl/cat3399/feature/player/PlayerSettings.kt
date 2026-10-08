@@ -823,6 +823,17 @@ private fun PlayerActivity.defaultPlaybackModeCode(): String {
     return PlayerPlaybackModes.normalize(raw)
 }
 
+/**
+ * 会话级播放模式覆盖：由 intent 传入（目前只有「播放全部」用它临时切到播放列表模式）。
+ * 只影响本次播放，不写全局播放模式设置，所以用户点单张卡片时的行为不受影响。
+ */
+internal fun PlayerActivity.playbackModeOverrideFromIntent(): String? {
+    val raw = intent.getStringExtra(PlayerActivity.EXTRA_PLAYBACK_MODE_OVERRIDE)?.trim().orEmpty()
+    if (raw.isBlank()) return null
+    // normalize 仅在 code 合法时原样返回，用它顺手挡掉伪造/过期的值。
+    return raw.takeIf { PlayerPlaybackModes.normalize(it) == it }
+}
+
 internal fun PlayerActivity.resolvedPlaybackMode(): String {
     val override = session.playbackModeOverride
     return PlayerPlaybackModes.normalize(override ?: defaultPlaybackModeCode())

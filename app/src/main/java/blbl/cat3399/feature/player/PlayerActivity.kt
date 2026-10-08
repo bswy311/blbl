@@ -800,7 +800,7 @@ class PlayerActivity : BaseActivity() {
             preferAudioId = prefs.playerPreferredAudioId,
             preferredQn = if (isPgcLikePlayback()) prefs.playerPreferredQnPgc else prefs.playerPreferredQn,
             targetQn = 0,
-            playbackModeOverride = null,
+            playbackModeOverride = playbackModeOverrideFromIntent(),
             subtitleEnabled = prefs.subtitleEnabledDefault,
             subtitleLangOverride = null,
             subtitleTextSizeSp = prefs.subtitleTextSizeSp,
@@ -3716,6 +3716,12 @@ class PlayerActivity : BaseActivity() {
         const val EXTRA_START_POSITION_MS = "start_position_ms"
         const val EXTRA_PLAYLIST_TOKEN = "playlist_token"
         const val EXTRA_PLAYLIST_INDEX = "playlist_index"
+
+        /**
+         * 会话级播放模式覆盖（如「播放全部」临时切到播放列表模式）。只影响本次播放，不写全局
+         * 播放模式设置，所以不会污染用户点单张卡片时的行为。
+         */
+        internal const val EXTRA_PLAYBACK_MODE_OVERRIDE = "playback_mode_override"
         internal const val EXTRA_ENGINE_SWITCH_RESUME_POSITION_MS = "engine_switch_resume_position_ms"
         internal const val EXTRA_ENGINE_SWITCH_RESUME_PLAY_WHEN_READY = "engine_switch_resume_play_when_ready"
         internal const val EXTRA_ENGINE_SWITCH_SESSION_JSON = "engine_switch_session_json"

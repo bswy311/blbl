@@ -29,6 +29,7 @@ import blbl.cat3399.core.ui.setTextSizePxIfChanged
 import blbl.cat3399.core.ui.uiScaler
 import blbl.cat3399.databinding.FragmentMyFavFolderDetailBinding
 import blbl.cat3399.feature.following.openUpDetailFromVideoCard
+import blbl.cat3399.feature.player.PlayerActivity
 import blbl.cat3399.feature.player.VideoCardPlaylistPage
 import blbl.cat3399.feature.video.VideoCardActionController
 import blbl.cat3399.feature.video.VideoCardAdapter
@@ -303,9 +304,8 @@ class MyFavFolderDetailFragment : Fragment(), RefreshKeyHandler {
                     }
                     val ordered = PlayAllOrder.apply(all, order)
                     AppLog.i("MyFavDetail", "playAll mediaId=$mediaId size=${ordered.size} order=$order")
-                    // The player only walks the playlist in 播放列表 mode, otherwise it stops after
-                    // the first video (same as 稍后再看).
-                    BiliClient.prefs.playerPlaybackMode = AppPrefs.PLAYER_PLAYBACK_MODE_PAGE_LIST
+                    // 播放列表模式只对这一会话生效（intent 覆盖），不写全局播放模式设置，
+                    // 这样用户点单张卡片时保持他自己的播放模式。
                     ctx.openPlayerFromPlaybackSource(
                         playbackSource =
                             VideoCardPlaybackSource(
@@ -313,7 +313,9 @@ class MyFavFolderDetailFragment : Fragment(), RefreshKeyHandler {
                                 source = "MyFavFolderPlayAll:$mediaId",
                             ),
                         position = 0,
-                    )
+                    ) {
+                        putExtra(PlayerActivity.EXTRA_PLAYBACK_MODE_OVERRIDE, AppPrefs.PLAYER_PLAYBACK_MODE_PAGE_LIST)
+                    }
                 } catch (t: Throwable) {
                     if (t is CancellationException) throw t
                     AppLog.e("MyFavDetail", "playAll failed mediaId=$mediaId", t)

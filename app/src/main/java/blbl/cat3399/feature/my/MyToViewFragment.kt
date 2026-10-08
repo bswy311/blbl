@@ -201,8 +201,10 @@ class MyToViewFragment : Fragment(), MyTabSwitchFocusTarget, RefreshKeyHandler {
 
     /**
      * Starts the whole 稍后再看 list as one playlist. The player walks the queue in storage
-     * order, so the chosen ordering is applied here and the playlist mode is switched on
-     * accordingly — otherwise playback would stop after the first video.
+     * order, so the chosen ordering is applied here.
+     *
+     * 播放列表模式通过 intent 覆盖只对本次播放生效（不写全局播放模式设置）：用户点单个卡片时
+     * 仍然是他自己的播放模式（默认「什么都不做」）。
      */
     private fun startPlayAll() {
         val ctx = context ?: return
@@ -213,12 +215,12 @@ class MyToViewFragment : Fragment(), MyTabSwitchFocusTarget, RefreshKeyHandler {
         }
         val order = PlayAllOrder.normalize(BiliClient.prefs.toViewPlayAllOrder)
         val ordered = PlayAllOrder.apply(cards, order)
-        BiliClient.prefs.playerPlaybackMode = AppPrefs.PLAYER_PLAYBACK_MODE_PAGE_LIST
         AppLog.i("MyToView", "playAll size=${ordered.size} order=$order")
         ctx.openPlayerFromPlaybackSource(
             playbackSource = VideoCardPlaybackSource(cards = ordered, source = "MyToView"),
             position = 0,
         ) { card ->
+            putExtra(PlayerActivity.EXTRA_PLAYBACK_MODE_OVERRIDE, AppPrefs.PLAYER_PLAYBACK_MODE_PAGE_LIST)
             // Resume the first item from its saved progress, matching the single-card click path.
             card.progressSec?.takeIf { it >= 5L }?.let { sec ->
                 putExtra(PlayerActivity.EXTRA_START_POSITION_MS, sec * 1000L)
