@@ -17,6 +17,7 @@ internal object PlayAllOrderUi {
             PlayAllOrder.REVERSE -> R.string.play_all_order_reverse
             PlayAllOrder.DURATION_LONG_FIRST -> R.string.play_all_order_duration_long_first
             PlayAllOrder.DURATION_SHORT_FIRST -> R.string.play_all_order_duration_short_first
+            PlayAllOrder.RECENT_PLAY -> R.string.play_all_order_recent_play
             else -> R.string.play_all_order_sequential
         }
 
@@ -29,9 +30,9 @@ internal object PlayAllOrderUi {
         context: Context,
         currentOrder: String,
         restoreFocusTarget: View,
+        orders: List<String> = PlayAllOrder.ordered,
         onPicked: (String) -> Unit,
     ) {
-        val orders = PlayAllOrder.ordered
         val current = PlayAllOrder.normalize(currentOrder)
         AppPopup.singleChoice(
             context = context,

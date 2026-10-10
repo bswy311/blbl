@@ -57,6 +57,12 @@ import kotlin.math.roundToLong
 
 object BiliApi {
     private const val TAG = "BiliApi"
+
+    /**
+     * 「最近播放」排序最多翻几页观看历史（每页 30 条）。历史可以很长，这里设上界避免为了一次
+     * 播放拉几十个请求；超出范围的视频会被当成"没播放记录"排到最后。
+     */
+    private const val HISTORY_VIEW_AT_MAX_PAGES = 6
     private const val DYNAMIC_HOST_FEED_CONSUME_FEATURES =
         "itemOpusStyle,listOnlyfans,opusBigCover,onlyfansVote,decorationCard,onlyfansAssetsV2," +
             "forwardListHidden,ugcDelete,onlyfansQaCard,commentsNewVersion,avatarAutoTheme," +
@@ -419,11 +425,69 @@ object BiliApi {
         viewAt: Long = 0,
         ps: Int = 24,
     ): HistoryPage {
-        val params = mutableMapOf(
-            "max" to max.coerceAtLeast(0).toString(),
-            "view_at" to viewAt.coerceAtLeast(0).toString(),
-            "ps" to ps.coerceIn(1, 30).toString(),
-        )
+        val data = historyCursorData(max = max, business = business, viewAt = viewAt, ps = ps)
+        val cursor = data.optJSONObject("cursor")?.let(::toHistoryCursor)
+        val list = data.optJSONArray("list") ?: JSONArray()
+        val items = withContext(Dispatchers.Default) { parseHistoryEntries(list) }
+        return HistoryPage(items = items, cursor = cursor)
+    }
+
+    /**
+     * 这些视频各自「最后一次观看」的时间（秒），供「播放全部」的「最近播放」排序使用。
+     * 只读历史里的 bvid + view_at，不解析整张卡片；返回结果里没有的 bvid 表示在抓取范围内没找到
+     * （历史很长时不会无限翻页，见 [HISTORY_VIEW_AT_MAX_PAGES]）。
+     */
+    suspend fun historyViewAtByBvid(
+        bvids: Collection<String>,
+        maxPages: Int = HISTORY_VIEW_AT_MAX_PAGES,
+        ps: Int = 30,
+    ): Map<String, Long> {
+        val wanted = bvids.filterTo(HashSet()) { it.isNotBlank() }
+        if (wanted.isEmpty()) return emptyMap()
+
+        val out = HashMap<String, Long>(wanted.size * 2)
+        var cursor: HistoryCursor? = null
+        for (page in 0 until maxPages.coerceAtLeast(1)) {
+            val data =
+                historyCursorData(
+                    max = cursor?.max ?: 0,
+                    business = cursor?.business,
+                    viewAt = cursor?.viewAt ?: 0,
+                    ps = ps,
+                )
+            val list = data.optJSONArray("list") ?: JSONArray()
+            if (list.length() == 0) break
+            for (i in 0 until list.length()) {
+                val obj = list.optJSONObject(i) ?: continue
+                val history = obj.optJSONObject("history") ?: continue
+                val bvid = history.optString("bvid", "").trim()
+                if (bvid.isEmpty() || !wanted.contains(bvid)) continue
+                val viewAtSec = obj.optLong("view_at")
+                if (viewAtSec <= 0L) continue
+                // 历史按时间倒序返回；同一视频重复出现时取更新的那条。
+                val existing = out[bvid]
+                if (existing == null || viewAtSec > existing) out[bvid] = viewAtSec
+            }
+            if (out.size >= wanted.size) break
+            val next = data.optJSONObject("cursor")?.let(::toHistoryCursor) ?: break
+            if (next == cursor) break
+            cursor = next
+        }
+        return out
+    }
+
+    private suspend fun historyCursorData(
+        max: Long,
+        business: String?,
+        viewAt: Long,
+        ps: Int,
+    ): JSONObject {
+        val params =
+            mutableMapOf(
+                "max" to max.coerceAtLeast(0).toString(),
+                "view_at" to viewAt.coerceAtLeast(0).toString(),
+                "ps" to ps.coerceIn(1, 30).toString(),
+            )
         if (!business.isNullOrBlank()) params["business"] = business
         val url = BiliClient.withQuery("https://api.bilibili.com/x/web-interface/history/cursor", params)
         val json = BiliClient.getJson(url)
@@ -432,20 +496,15 @@ object BiliApi {
             val msg = json.optString("message", json.optString("msg", ""))
             throw BiliApiException(apiCode = code, apiMessage = msg)
         }
-        val data = json.optJSONObject("data") ?: JSONObject()
-        val cursorObj = data.optJSONObject("cursor")
-        val cursor =
-            cursorObj?.let {
-                HistoryCursor(
-                    max = it.optLong("max"),
-                    business = it.optString("business", "").takeIf { s -> s.isNotBlank() },
-                    viewAt = it.optLong("view_at"),
-                )
-            }
-        val list = data.optJSONArray("list") ?: JSONArray()
-        val items = withContext(Dispatchers.Default) { parseHistoryEntries(list) }
-        return HistoryPage(items = items, cursor = cursor)
+        return json.optJSONObject("data") ?: JSONObject()
     }
+
+    private fun toHistoryCursor(obj: JSONObject): HistoryCursor =
+        HistoryCursor(
+            max = obj.optLong("max"),
+            business = obj.optString("business", "").takeIf { s -> s.isNotBlank() },
+            viewAt = obj.optLong("view_at"),
+        )
 
     private fun parseHistoryEntries(list: JSONArray): List<HistoryEntry> {
         val out = ArrayList<HistoryEntry>(list.length())

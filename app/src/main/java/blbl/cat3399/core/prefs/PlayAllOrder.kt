@@ -26,8 +26,20 @@ internal object PlayAllOrder {
     const val DURATION_LONG_FIRST = "duration_long_first"
     const val DURATION_SHORT_FIRST = "duration_short_first"
 
+    /**
+     * 按"最近播放"排序（最近看的在前）。时间来自服务端观看历史，需要联网取，
+     * 所以默认只在稍后再看里提供（见 [orderedWithRecentPlay]）。
+     */
+    const val RECENT_PLAY = "recent_play"
+
     /** Picker order, i.e. the order the choices are listed in. */
     val ordered = listOf(SHUFFLE, SEQUENTIAL, REVERSE, DURATION_LONG_FIRST, DURATION_SHORT_FIRST)
+
+    /**
+     * 稍后再看用：比 [ordered] 多一个「最近播放」，并且**放在最前面**（用户 2026-10-10 指定）。
+     * 收藏夹不提供它（要多拉历史请求）。
+     */
+    val orderedWithRecentPlay = listOf(RECENT_PLAY) + ordered
 
     /** First-time value; keeps the plain list order so nothing surprises the user. */
     const val DEFAULT = SEQUENTIAL
@@ -39,7 +51,7 @@ internal object PlayAllOrder {
     fun normalize(raw: String?): String {
         val trimmed = raw?.trim().orEmpty()
         return when (trimmed) {
-            SHUFFLE, REVERSE, DURATION_LONG_FIRST, DURATION_SHORT_FIRST -> trimmed
+            SHUFFLE, REVERSE, DURATION_LONG_FIRST, DURATION_SHORT_FIRST, RECENT_PLAY -> trimmed
 
             LEGACY_DURATION_ASC -> DURATION_SHORT_FIRST
 
@@ -49,10 +61,15 @@ internal object PlayAllOrder {
         }
     }
 
+    /**
+     * @param recentViewAtByBvid 最近一次观看时间（秒），来自服务端观看历史；只在 [RECENT_PLAY]
+     *   下使用。里没有的视频视为"没播放记录"，排到最后并按原顺序保持稳定。
+     */
     fun apply(
         cards: List<VideoCard>,
         order: String,
         random: Random = Random.Default,
+        recentViewAtByBvid: Map<String, Long> = emptyMap(),
     ): List<VideoCard> {
         if (cards.size <= 1) return cards
         return when (normalize(order)) {
@@ -64,8 +81,20 @@ internal object PlayAllOrder {
 
             DURATION_SHORT_FIRST -> byDuration(cards, shortFirst = true)
 
+            RECENT_PLAY -> byRecentPlay(cards, recentViewAtByBvid)
+
             else -> cards
         }
+    }
+
+    private fun byRecentPlay(
+        cards: List<VideoCard>,
+        viewAtByBvid: Map<String, Long>,
+    ): List<VideoCard> {
+        if (viewAtByBvid.isEmpty()) return cards
+        // 最近播放的在前；没有播放记录的排最后（sortedByDescending 是稳定排序，相等时保持原顺序）。
+        val (played, unplayed) = cards.partition { (viewAtByBvid[it.bvid] ?: 0L) > 0L }
+        return played.sortedByDescending { viewAtByBvid.getValue(it.bvid) } + unplayed
     }
 
     private fun byDuration(

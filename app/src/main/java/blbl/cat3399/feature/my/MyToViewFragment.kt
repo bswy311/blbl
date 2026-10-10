@@ -13,12 +13,14 @@ import androidx.recyclerview.widget.SimpleItemAnimator
 import blbl.cat3399.R
 import blbl.cat3399.core.api.BiliApi
 import blbl.cat3399.core.log.AppLog
+import blbl.cat3399.core.model.VideoCard
 import blbl.cat3399.core.net.BiliClient
 import blbl.cat3399.core.prefs.AppPrefs
 import blbl.cat3399.core.prefs.PlayAllOrder
 import blbl.cat3399.core.ui.AppToast
 import blbl.cat3399.core.ui.DpadGridController
 import blbl.cat3399.core.ui.FocusTreeUtils
+import blbl.cat3399.core.ui.popup.AppPopup
 import blbl.cat3399.core.ui.postIfAlive
 import blbl.cat3399.core.ui.requestFocusFirstItemOrSelfAfterRefresh
 import blbl.cat3399.databinding.FragmentVideoGridBinding
@@ -35,6 +37,7 @@ import blbl.cat3399.feature.video.openVideoDetailFromCards
 import blbl.cat3399.feature.video.removeVideoCardAndRestoreFocus
 import blbl.cat3399.ui.RefreshKeyHandler
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 class MyToViewFragment : Fragment(), MyTabSwitchFocusTarget, RefreshKeyHandler {
@@ -48,6 +51,7 @@ class MyToViewFragment : Fragment(), MyTabSwitchFocusTarget, RefreshKeyHandler {
     private var pendingFocusFirstItemAfterRefresh: Boolean = false
     private var dpadGridController: DpadGridController? = null
     private var lastFocusedHeaderView: View? = null
+    private var playAllJob: Job? = null
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         _binding = FragmentVideoGridBinding.inflate(inflater, container, false)
@@ -214,10 +218,63 @@ class MyToViewFragment : Fragment(), MyTabSwitchFocusTarget, RefreshKeyHandler {
             return
         }
         val order = PlayAllOrder.normalize(BiliClient.prefs.toViewPlayAllOrder)
-        val ordered = PlayAllOrder.apply(cards, order)
-        AppLog.i("MyToView", "playAll size=${ordered.size} order=$order")
+        if (order != PlayAllOrder.RECENT_PLAY) {
+            launchPlayer(cards = PlayAllOrder.apply(cards, order), order = order)
+            return
+        }
+        startPlayAllByRecentPlay(cards)
+    }
+
+    /**
+     * 「最近播放」要先问服务端观看历史（含手机/网页等其它设备的记录），所以走异步并显示进度；
+     * 取不到历史就按原顺序播，不打断用户。
+     */
+    private fun startPlayAllByRecentPlay(cards: List<VideoCard>) {
+        if (playAllJob?.isActive == true) return
+        val ctx = context ?: return
+        var finished = false
+        val progress =
+            AppPopup.progress(
+                context = ctx,
+                title = ctx.getString(R.string.play_all),
+                status = ctx.getString(R.string.play_all_loading_recent),
+                cancelable = true,
+                onNegative = { playAllJob?.cancel() },
+                onDismiss = { if (!finished) playAllJob?.cancel() },
+            )
+        playAllJob =
+            viewLifecycleOwner.lifecycleScope.launch {
+                try {
+                    val viewAtByBvid =
+                        try {
+                            BiliApi.historyViewAtByBvid(cards.map { it.bvid })
+                        } catch (t: Throwable) {
+                            if (t is CancellationException) throw t
+                            AppLog.e("MyToView", "playAll recentPlay history failed", t)
+                            AppToast.show(ctx, ctx.getString(R.string.play_all_recent_unavailable))
+                            emptyMap()
+                        }
+                    AppLog.i("MyToView", "playAll recentPlay matched=${viewAtByBvid.size}/${cards.size}")
+                    launchPlayer(
+                        cards = PlayAllOrder.apply(cards, PlayAllOrder.RECENT_PLAY, recentViewAtByBvid = viewAtByBvid),
+                        order = PlayAllOrder.RECENT_PLAY,
+                    )
+                } finally {
+                    finished = true
+                    progress?.dismiss()
+                }
+            }
+    }
+
+    private fun launchPlayer(
+        cards: List<VideoCard>,
+        order: String,
+    ) {
+        val ctx = context ?: return
+        if (cards.isEmpty()) return
+        AppLog.i("MyToView", "playAll size=${cards.size} order=$order")
         ctx.openPlayerFromPlaybackSource(
-            playbackSource = VideoCardPlaybackSource(cards = ordered, source = "MyToView"),
+            playbackSource = VideoCardPlaybackSource(cards = cards, source = "MyToView"),
             position = 0,
         ) { card ->
             putExtra(PlayerActivity.EXTRA_PLAYBACK_MODE_OVERRIDE, AppPrefs.PLAYER_PLAYBACK_MODE_PAGE_LIST)
@@ -235,6 +292,7 @@ class MyToViewFragment : Fragment(), MyTabSwitchFocusTarget, RefreshKeyHandler {
             context = ctx,
             currentOrder = BiliClient.prefs.toViewPlayAllOrder,
             restoreFocusTarget = b.btnPlayOrder,
+            orders = PlayAllOrder.orderedWithRecentPlay,
         ) { picked ->
             BiliClient.prefs.toViewPlayAllOrder = picked
             updatePlayOrderLabel()
@@ -339,6 +397,8 @@ class MyToViewFragment : Fragment(), MyTabSwitchFocusTarget, RefreshKeyHandler {
 
     override fun onDestroyView() {
         initialLoadTriggered = false
+        playAllJob?.cancel()
+        playAllJob = null
         dpadGridController?.release()
         dpadGridController = null
         _binding = null

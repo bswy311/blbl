@@ -41,6 +41,50 @@ class PlayAllOrderTest {
         assertEquals(PlayAllOrder.SHUFFLE, PlayAllOrder.normalize("shuffle"))
         assertEquals(PlayAllOrder.DURATION_LONG_FIRST, PlayAllOrder.normalize("duration_long_first"))
         assertEquals(PlayAllOrder.DURATION_SHORT_FIRST, PlayAllOrder.normalize("duration_short_first"))
+        assertEquals(PlayAllOrder.RECENT_PLAY, PlayAllOrder.normalize("recent_play"))
+    }
+
+    @Test
+    fun recent_play_is_offered_for_to_view_but_not_for_fav_folders() {
+        assertEquals(true, PlayAllOrder.orderedWithRecentPlay.contains(PlayAllOrder.RECENT_PLAY))
+        assertEquals(false, PlayAllOrder.ordered.contains(PlayAllOrder.RECENT_PLAY))
+        // 「最近播放」在最前面，其余顺序与收藏夹那份完全一致。
+        assertEquals(PlayAllOrder.RECENT_PLAY, PlayAllOrder.orderedWithRecentPlay.first())
+        assertEquals(PlayAllOrder.ordered, PlayAllOrder.orderedWithRecentPlay.drop(1))
+    }
+
+    @Test
+    fun apply_recent_play_should_put_most_recently_watched_first() {
+        val cards = listOf(card("a", 10), card("b", 10), card("c", 10))
+        val viewAt = mapOf("a" to 100L, "b" to 300L, "c" to 200L)
+
+        assertEquals(listOf("b", "c", "a"), ids(PlayAllOrder.apply(cards, PlayAllOrder.RECENT_PLAY, recentViewAtByBvid = viewAt)))
+    }
+
+    @Test
+    fun apply_recent_play_should_push_videos_without_history_last_and_keep_their_order() {
+        val cards = listOf(card("never2", 10), card("watched", 10), card("never1", 10))
+        val viewAt = mapOf("watched" to 50L)
+
+        assertEquals(
+            listOf("watched", "never2", "never1"),
+            ids(PlayAllOrder.apply(cards, PlayAllOrder.RECENT_PLAY, recentViewAtByBvid = viewAt)),
+        )
+    }
+
+    @Test
+    fun apply_recent_play_should_keep_input_order_when_no_history_is_available() {
+        val cards = listOf(card("a", 10), card("b", 10), card("c", 10))
+
+        assertEquals(listOf("a", "b", "c"), ids(PlayAllOrder.apply(cards, PlayAllOrder.RECENT_PLAY, recentViewAtByBvid = emptyMap())))
+    }
+
+    @Test
+    fun apply_should_stay_stable_for_equal_recent_play_timestamps() {
+        val cards = listOf(card("a", 10), card("b", 10), card("c", 10))
+        val viewAt = mapOf("a" to 100L, "b" to 100L, "c" to 100L)
+
+        assertEquals(listOf("a", "b", "c"), ids(PlayAllOrder.apply(cards, PlayAllOrder.RECENT_PLAY, recentViewAtByBvid = viewAt)))
     }
 
     @Test
