@@ -17,6 +17,7 @@ import blbl.cat3399.core.ui.AppToast
 import blbl.cat3399.core.ui.FocusTreeUtils
 import blbl.cat3399.core.ui.postIfAlive
 import blbl.cat3399.feature.video.VideoCardAdapter
+import blbl.cat3399.feature.video.openVideoDetailFromCards
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -74,6 +75,42 @@ internal fun PlayerActivity.initBottomCardPanel() {
     binding.recyclerRecommend.layoutManager =
         LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
     binding.recyclerRecommend.itemAnimator = null
+
+    // Long-press overlay: 4 actions (稍后再看/详情/UP主/从播放列表删除).
+    val panelActionController =
+        blbl.cat3399.feature.video.VideoCardActionController(
+            context = this,
+            scope = lifecycleScope,
+            dismissBehavior =
+                blbl.cat3399.feature.video.VideoCardDismissBehavior.RemoveFromPlayQueue(
+                    onRemoved = { stableKey -> removeCardFromPlayQueue(stableKey) },
+                ),
+            onOpenDetail = { card, _ ->
+                // Open detail page for this specific card (not the current playing video).
+                this@initBottomCardPanel.openVideoDetailFromCards(
+                    cards = listOf(card),
+                    position = 0,
+                    source = "PlayerPlaylistPanel",
+                )
+            },
+            onOpenUp = { card ->
+                // Open UP profile for this card. Simplified version for Activity context.
+                val mid = card.ownerMid?.takeIf { it > 0L }
+                if (mid != null) {
+                    startActivity(
+                        android.content.Intent(this@initBottomCardPanel, blbl.cat3399.feature.following.UpDetailActivity::class.java)
+                            .putExtra(blbl.cat3399.feature.following.UpDetailActivity.EXTRA_MID, mid)
+                    )
+                } else {
+                    blbl.cat3399.core.ui.AppToast.show(this@initBottomCardPanel, "未获取到 UP 主信息")
+                }
+            },
+            onCardRemoved = { _ ->
+                // After removal, refresh the panel in place (no flicker).
+                refreshBottomCardPanelContent(requestFocus = false, preserveScrollPosition = true)
+            },
+        )
+
     binding.recyclerRecommend.adapter =
         VideoCardAdapter(
             onClick = { card, pos ->
@@ -84,6 +121,7 @@ internal fun PlayerActivity.initBottomCardPanel() {
                 }
             },
             onLongClick = null,
+            actionDelegate = panelActionController,
             fixedItemWidthDimenRes = R.dimen.player_recommend_card_width,
             fixedItemMarginDimenRes = R.dimen.player_recommend_card_margin,
             stableIdKey = { card ->
@@ -575,4 +613,69 @@ private fun PlayerActivity.focusBottomPanelPosition(position: Int) {
                 binding.recyclerRecommend.findViewHolderForAdapterPosition(position)?.itemView?.requestOsdFocusIfUsable()
             }
         }
+}
+
+/**
+ * Remove a card from the in-memory play queue (pageListItems + pageListUiCards) by stableKey.
+ * Called by the playlist panel's "从播放列表删除" long-press action.
+ * After removal, the panel is refreshed in place (no flicker) via onCardRemoved callback.
+ */
+private fun PlayerActivity.removeCardFromPlayQueue(stableKey: String) {
+    // Find the index in pageListUiCards (which mirrors pageListItems).
+    val index =
+        pageListUiCards.indexOfFirst { card ->
+            val key =
+                buildString {
+                    append(card.bvid)
+                    append('|')
+                    append(card.cid ?: -1L)
+                    append('|')
+                    append(card.aid ?: -1L)
+                    append('|')
+                    append(card.epId ?: -1L)
+                    append('|')
+                    append(card.title)
+                }
+            key == stableKey
+        }
+    if (index < 0) {
+        // Fallback: try pageListItems directly (in case uiCards is empty/out of sync).
+        val itemIndex =
+            pageListItems.indexOfFirst { item ->
+                val key =
+                    buildString {
+                        append(item.bvid)
+                        append('|')
+                        append(item.cid ?: -1L)
+                        append('|')
+                        append(item.aid ?: -1L)
+                        append('|')
+                        append(item.epId ?: -1L)
+                        append('|')
+                        append(item.title.orEmpty())
+                    }
+                key == stableKey
+            }
+        if (itemIndex >= 0) {
+            pageListItems = pageListItems.toMutableList().also { it.removeAt(itemIndex) }
+            if (pageListUiCards.size == pageListItems.size + 1) {
+                // uiCards was one ahead (shouldn't happen normally, but be safe).
+                pageListUiCards = pageListUiCards.toMutableList().also { if (itemIndex < it.size) it.removeAt(itemIndex) }
+            }
+            // Adjust current playing index if needed.
+            if (pageListIndex >= itemIndex && pageListIndex > 0) {
+                pageListIndex--
+            }
+        }
+        return
+    }
+
+    // Remove from both lists.
+    pageListUiCards = pageListUiCards.toMutableList().also { it.removeAt(index) }
+    pageListItems = pageListItems.toMutableList().also { if (index < it.size) it.removeAt(index) }
+
+    // Adjust current playing index if needed.
+    if (pageListIndex >= index && pageListIndex > 0) {
+        pageListIndex--
+    }
 }

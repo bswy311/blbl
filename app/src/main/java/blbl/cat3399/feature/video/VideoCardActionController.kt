@@ -24,6 +24,14 @@ sealed interface VideoCardDismissBehavior {
     data class DeleteFavFolderItem(
         val mediaId: Long,
     ) : VideoCardDismissBehavior
+
+    /**
+     * Remove the card from the in-memory play queue only (no server call).
+     * Used by the player's playlist panel where "删除" means "remove from this queue".
+     */
+    data class RemoveFromPlayQueue(
+        val onRemoved: (stableKey: String) -> Unit,
+    ) : VideoCardDismissBehavior
 }
 
 class VideoCardActionController(
@@ -135,6 +143,15 @@ class VideoCardActionController(
                 val actionKey = buildActionKey(card = card, suffix = "dismiss")
                 if (!markInFlight(actionKey)) return
 
+                // Special case: RemoveFromPlayQueue is pure in-memory, no server call.
+                val removeFromPlayQueue = dismissBehavior as? VideoCardDismissBehavior.RemoveFromPlayQueue
+                if (removeFromPlayQueue != null) {
+                    removeFromPlayQueue.onRemoved(card.stableKey())
+                    AppToast.show(context, context.getString(R.string.video_card_action_remove_from_playlist_done))
+                    clearInFlight(actionKey)
+                    return
+                }
+
                 scope.launch {
                     try {
                         withContext(Dispatchers.IO) {
@@ -156,6 +173,11 @@ class VideoCardActionController(
                                 }
 
                                 VideoCardDismissBehavior.LocalNotInterested -> Unit
+
+                                is VideoCardDismissBehavior.RemoveFromPlayQueue -> {
+                                    // Already handled above; should not reach here.
+                                    Unit
+                                }
                             }
                         }
                         onCardRemoved(card.stableKey())
@@ -193,6 +215,7 @@ class VideoCardActionController(
     private fun dismissActionLabelRes(): Int {
         return when (dismissBehavior) {
             VideoCardDismissBehavior.LocalNotInterested -> R.string.video_card_action_not_interested
+            is VideoCardDismissBehavior.RemoveFromPlayQueue -> R.string.video_card_action_remove_from_playlist
             else -> R.string.video_card_action_delete
         }
     }

@@ -75,6 +75,7 @@ import blbl.cat3399.core.ui.DoubleBackToExitHandler
 import blbl.cat3399.core.ui.FocusReturn
 import blbl.cat3399.core.ui.FocusTreeUtils
 import blbl.cat3399.core.ui.Immersive
+import blbl.cat3399.core.ui.dispatchToDpadItemKeyHandler
 import blbl.cat3399.core.ui.popup.PopupHost
 import blbl.cat3399.core.util.Format as BlblFormat
 import blbl.cat3399.feature.my.BangumiDetailActivity
@@ -1446,6 +1447,15 @@ class PlayerActivity : BaseActivity() {
         if (isBottomCardPanelVisible()) {
             val focused = currentFocus
             val focusInPanel = focused != null && FocusTreeUtils.isDescendantOf(focused, binding.recommendPanel)
+
+            // Long-press overlay dispatch: when a card's 4-action overlay is expanded,
+            // route keys to the overlay first (LEFT/RIGHT to move among buttons, BACK to collapse).
+            // This must happen before the panel's child setOnKeyListener eats LEFT/RIGHT for card navigation.
+            if (focusInPanel && focused != null && event.action == KeyEvent.ACTION_DOWN) {
+                if (focused.dispatchToDpadItemKeyHandler(keyCode, event)) {
+                    return true
+                }
+            }
 
             if (
                 keyCode == KeyEvent.KEYCODE_BACK ||

@@ -60,8 +60,10 @@
     <string name="video_card_action_open_up">进入UP主页</string>
     <string name="video_card_action_not_interested">不感兴趣</string>
     <string name="video_card_action_delete">删除</string>
+    <string name="video_card_action_remove_from_playlist">从播放列表删除</string>
     <string name="video_card_action_watch_later_done">已添加到稍后再看</string>
     <string name="video_card_action_delete_done">已删除</string>
+    <string name="video_card_action_remove_from_playlist_done">已从播放列表删除</string>
     <string name="video_card_action_not_interested_done">将减少此类视频展示</string>
     <string name="video_card_action_open_detail_unsupported">当前卡片暂不支持进入详情页</string>
     <string name="video_card_action_missing_video_id">未获取到视频信息</string>
@@ -113,7 +115,11 @@
     <string name="disclaimer_title">使用协议</string>
     <string name="disclaimer_accept">接受并继续</string>
     <string name="disclaimer_exit">退出</string>
-    <string name="disclaimer_message">若要继续使用该应用需接受以下协议：\n\n本应用仅供学习交流使用，禁止用于其他用途。\n\n请在安装后的24小时内将本应用从设备中卸载，并且把APK安装文件删除。</string>
+    <string name="disclaimer_message">若要继续使用该应用需接受以下协议：
+
+本应用仅供学习交流使用，禁止用于其他用途。
+
+请在安装后的24小时内将本应用从设备中卸载，并且把APK安装文件删除。</string>
 
     <string name="player_btn_subtitle">字幕</string>
     <string name="player_btn_list_panel">列表</string>
