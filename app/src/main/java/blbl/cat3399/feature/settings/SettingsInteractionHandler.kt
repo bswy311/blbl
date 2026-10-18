@@ -178,6 +178,129 @@ class SettingsInteractionHandler(
             }
     }
 
+    /**
+     * 枚举已挂载的存储卷（含 U 盘），返回 (label, volumeRoot) 列表。
+     * 扫描多个常见挂载路径，尽量兼容不同电视厂商的存储布局。
+     */
+    private fun listExportVolumes(): List<Pair<String, File>> {
+        val result = mutableListOf<Pair<String, File>>()
+        val seen = HashSet<String>()
+
+        // 收集所有候选挂载点
+        val candidates = mutableListOf<File>()
+
+        // 1) /storage/ 下的所有目录（跳过系统伪挂载）
+        File("/storage").listFiles()?.forEach { candidates.add(it) }
+
+        // 2) getExternalFilesDirs 返回的所有路径（提取卷根）
+        androidx.core.content.ContextCompat.getExternalFilesDirs(activity, null).forEach { dir ->
+            if (dir == null) return@forEach
+            val path = dir.absolutePath
+            val idx = path.indexOf("/Android/data")
+            if (idx > 0) candidates.add(File(path.substring(0, idx)))
+        }
+
+        // 3) /mnt/media_rw/（部分设备 USB 挂载点）
+        File("/mnt/media_rw").listFiles()?.forEach { candidates.add(it) }
+
+        for (candidate in candidates) {
+            val canonical = runCatching { candidate.canonicalPath }.getOrDefault(candidate.absolutePath)
+            if (!seen.add(canonical)) continue
+            if (!candidate.isDirectory) continue
+            val name = candidate.name
+            if (name == "self" || name == "emulated") continue
+
+            // 尝试写测试文件确认是否真的可写
+            val testOk = runCatching {
+                val testDir = File(candidate, "Android/data/${activity.packageName}/files")
+                testDir.mkdirs()
+                val t = File(testDir, ".write_test")
+                val ok = t.createNewFile() && t.delete()
+                ok
+            }.getOrDefault(false)
+            if (!testOk) continue
+
+            val isRemovable = runCatching { android.os.Environment.isExternalStorageRemovable(candidate) }.getOrDefault(name.matches(Regex("[A-F0-9]{4}-[A-F0-9]{4}")))
+            val label = if (isRemovable) "U盘/SD卡 (${name})" else "内部存储"
+            AppLog.i("Settings", "listExportVolumes: found volume=$canonical label=$label")
+            result.add(label to candidate)
+        }
+
+        // 诊断日志：输出 /storage/ 内容，方便排查
+        val storageContents = runCatching { File("/storage").listFiles()?.map { it.name }?.joinToString() }.getOrNull()
+        AppLog.i("Settings", "listExportVolumes: /storage/ contents=[$storageContents], found ${result.size} volume(s)")
+
+        // 如果没找到任何外部存储，回退到默认内部存储
+        if (result.isEmpty()) {
+            val internal = activity.getExternalFilesDir(null)
+            if (internal != null) {
+                result.add("内部存储" to internal)
+            }
+        }
+        return result
+    }
+
+    private fun showExport日志存储卷选择器(prepared: PreparedLogsExport) {
+        val volumes = listExportVolumes()
+        when {
+            volumes.isEmpty() -> {
+                // 无可用存储，回退到默认本地导出
+                exportLogsToLocalFile(prepared)
+            }
+            volumes.size == 1 -> {
+                // 只有一个存储卷，直接导出
+                exportLogsToVolume(prepared, volumes[0].second, volumes[0].first)
+            }
+            else -> {
+                // 多个存储卷，让用户选
+                val labels = volumes.map { it.first }
+                AppPopup.singleChoice(
+                    context = activity,
+                    title = "导出日志到…",
+                    items = labels,
+                    checkedIndex = 0,
+                ) { which, _ ->
+                    val (_, targetDir) = volumes[which]
+                    val label = labels[which]
+                    exportLogsToVolume(prepared, targetDir, label)
+                }
+            }
+        }
+    }
+
+    private fun exportLogsToVolume(prepared: PreparedLogsExport, volumeRoot: File, volumeLabel: String) {
+        exportLogsJob?.cancel()
+        exportLogsJob =
+            launchIoJob(
+                startToast = "正在导出日志到${volumeLabel}…",
+                failureLogMessage = "export logs to volume failed",
+                failureToastPrefix = "导出失败",
+                work = {
+                    // 先尝试用户友好的根目录 blbl_logs/
+                    var exportDir = File(volumeRoot, "blbl_logs")
+                    val canWriteRoot = runCatching {
+                        exportDir.mkdirs()
+                        val t = File(exportDir, ".write_test")
+                        t.createNewFile() && t.delete()
+                    }.getOrDefault(false)
+                    if (!canWriteRoot) {
+                        // 回退到 app 专属目录（保证可写）
+                        exportDir = File(volumeRoot, "Android/data/${activity.packageName}/files/blbl_logs")
+                    }
+                    LogExporter.exportToDirectory(
+                        context = activity,
+                        targetDir = exportDir,
+                        nowMs = prepared.nowMs,
+                        fileNameOverride = prepared.fileName,
+                        extras = prepared.extras,
+                    )
+                },
+            ) { result ->
+                val path = result.file.absolutePath
+                AppToast.showLong(activity, "已导出到${volumeLabel}：${result.fileName}（${result.includedFiles}个文件）\n路径：$path")
+            }
+    }
+
     private fun showConfigTransferDialog() {
         AppPopup.custom(
             context = activity,
@@ -746,12 +869,7 @@ class SettingsInteractionHandler(
             SettingId.ClearLogin -> showClearLoginDialog(state.currentSectionIndex, entry.id)
             SettingId.ExportLogs -> {
                 val prepared = prepareLogsExport()
-                launchDocumentExport(
-                    request = CreateDocumentRequest(mimeType = LogExporter.ZIP_MIME, fileName = prepared.fileName),
-                    onUriSelected = { uri -> exportLogsToUri(uri = uri, prepared = prepared) },
-                    onFallbackToLocal = { exportLogsToLocalFile(prepared) },
-                    logTag = "logs",
-                )
+                showExport日志存储卷选择器(prepared)
             }
 
             SettingId.UploadLogs -> {
@@ -1568,12 +1686,6 @@ class SettingsInteractionHandler(
                     prefs.playerStyle = value
                     renderer.refreshSection(entry.id)
                 }
-            }
-
-            SettingId.ProjectUrl -> showProjectDialog()
-
-            SettingId.QqGroup -> {
-                copyToClipboard(label = "QQ交流群", text = SettingsConstants.QQ_GROUP, toastText = "已复制群号：${SettingsConstants.QQ_GROUP}")
             }
 
             SettingId.PlayerKernelCheck -> handlePlayerKernelCheck()
@@ -3091,30 +3203,6 @@ class SettingsInteractionHandler(
                 renderer.refreshAboutSectionKeepPosition()
             }
                 ?: return
-    }
-
-    private fun showProjectDialog() {
-        AppPopup.custom(
-            context = activity,
-            title = "项目地址",
-            cancelable = true,
-            actions =
-                listOf(
-                    PopupAction(role = PopupActionRole.NEGATIVE, text = "关闭"),
-                    PopupAction(role = PopupActionRole.NEUTRAL, text = "复制") {
-                        copyToClipboard(label = "项目地址", text = SettingsConstants.PROJECT_URL, toastText = "已复制项目地址")
-                    },
-                    PopupAction(role = PopupActionRole.POSITIVE, text = "打开") { openUrl(SettingsConstants.PROJECT_URL) },
-                ),
-            preferredActionRole = PopupActionRole.POSITIVE,
-            content = { dialogContext ->
-                val tv =
-                    android.view.LayoutInflater.from(dialogContext)
-                        .inflate(blbl.cat3399.R.layout.view_popup_message, null, false) as TextView
-                tv.text = SettingsConstants.PROJECT_URL
-                tv
-            },
-        )
     }
 
     private fun openUrl(url: String) {

@@ -105,8 +105,6 @@ enum class SettingId(
     // 关于应用
     PlayerKernelCheck("player_kernel_check"),
     AppVersion("app_version"),
-    ProjectUrl("project_url"),
-    QqGroup("qq_group"),
     LogTag("log_tag"),
     ExportLogs("export_logs"),
     UploadLogs("upload_logs"),

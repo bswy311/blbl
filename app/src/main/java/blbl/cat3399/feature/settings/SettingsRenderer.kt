@@ -499,10 +499,8 @@ class SettingsRenderer(
             "关于应用" ->
                 listOf(
                     SettingEntry(SettingId.AppVersion, "版本", BuildConfig.VERSION_NAME, null),
-                    SettingEntry(SettingId.ProjectUrl, "项目地址", SettingsConstants.PROJECT_URL, null),
-                    SettingEntry(SettingId.QqGroup, "QQ交流群", SettingsConstants.QQ_GROUP, null),
                     SettingEntry(SettingId.LogTag, "日志标签", "BLBL", "用于 Logcat 过滤"),
-                    SettingEntry(SettingId.ExportLogs, "导出日志", "保存文件", null),
+                    SettingEntry(SettingId.ExportLogs, "导出日志", "保存到本地/U盘", "打包日志zip，可选导出到U盘等外部存储"),
                     SettingEntry(SettingId.UploadLogs, "上传日志", "点击上传", "打包并上传日志zip到开发者（含设备/版本/非登录配置元数据）"),
                     playerKernelEntry(),
                     SettingEntry(

@@ -85,6 +85,38 @@ object LogExporter {
         return LocalExportResult(fileName = result.fileName, file = result.file, includedFiles = result.value)
     }
 
+    /**
+     * 导出日志 zip 到指定目录（例如 U 盘的 exports/ 子目录）。
+     * 不需要 SAF，直接写文件，适合 TV 遥控器场景。
+     */
+    fun exportToDirectory(
+        context: Context,
+        targetDir: File,
+        nowMs: Long = System.currentTimeMillis(),
+        fileNameOverride: String? = null,
+        extras: List<ZipExtra> = emptyList(),
+    ): LocalExportResult {
+        val input = buildExportInput(context = context, nowMs = nowMs, fileNameOverride = fileNameOverride)
+        runCatching { targetDir.mkdirs() }
+        val outFile = File(targetDir, input.fileName)
+        // 避免覆盖已有文件
+        var actualFile = outFile
+        var attempt = 0
+        while (actualFile.exists() && attempt < 20) {
+            attempt++
+            val dotIdx = input.fileName.lastIndexOf('.')
+            val name = if (dotIdx > 0) input.fileName.substring(0, dotIdx) else input.fileName
+            val ext = if (dotIdx > 0) input.fileName.substring(dotIdx) else ""
+            actualFile = File(targetDir, "${name}_$attempt$ext")
+        }
+        java.io.FileOutputStream(actualFile).use { fos ->
+            java.util.zip.ZipOutputStream(java.io.BufferedOutputStream(fos, 32 * 1024)).use { zip ->
+                writeZip(zip = zip, extras = extras, logFiles = input.logFiles, crashFile = input.crashFile)
+            }
+        }
+        return LocalExportResult(fileName = actualFile.name, file = actualFile, includedFiles = input.logFiles.size + (if (input.crashFile != null) 1 else 0) + extras.size)
+    }
+
     private fun buildExportFileName(nowMs: Long): String {
         val sdf = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US)
         val ts = runCatching { sdf.format(Date(nowMs)) }.getOrNull() ?: nowMs.toString()

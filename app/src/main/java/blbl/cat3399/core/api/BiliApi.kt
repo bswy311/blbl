@@ -697,15 +697,55 @@ object BiliApi {
         val missingIndices = folders.withIndex().filter { it.value.coverUrl.isNullOrBlank() }.map { it.index }
         if (missingIndices.isEmpty()) return folders
 
+        // list-all 不返回 cover，用 list 端点批量补全（单次分页请求带 cover 字段）。
         val enriched = folders.toMutableList()
-        for (idx in missingIndices) {
-            val f = folders[idx]
-            val info = runCatching { favFolderInfo(f.mediaId) }.getOrNull()
-            if (info != null && !info.coverUrl.isNullOrBlank()) {
-                enriched[idx] = f.copy(coverUrl = info.coverUrl)
+        val coverMap = runCatching { favFolderCoverBatch(upMid) }.getOrNull()
+        if (coverMap != null) {
+            for (idx in missingIndices) {
+                val f = folders[idx]
+                val cover = coverMap[f.mediaId]
+                if (!cover.isNullOrBlank()) {
+                    enriched[idx] = f.copy(coverUrl = cover)
+                }
             }
         }
         return enriched
+    }
+
+    /**
+     * 通过分页 list 端点批量获取收藏夹封面。
+     * list-all 不返回 cover 字段，但 list 端点返回。
+     * 返回 mediaId → coverUrl 的映射。
+     */
+    private suspend fun favFolderCoverBatch(upMid: Long): Map<Long, String?> {
+        val result = HashMap<Long, String?>()
+        var pn = 1
+        val ps = 40
+        while (true) {
+            val url = BiliClient.withQuery(
+                "https://api.bilibili.com/x/v3/fav/folder/created/list",
+                mapOf(
+                    "up_mid" to upMid.toString(),
+                    "pn" to pn.toString(),
+                    "ps" to ps.toString(),
+                ),
+            )
+            val json = BiliClient.getJson(url)
+            if (json.optInt("code", 0) != 0) break
+            val data = json.optJSONObject("data") ?: break
+            val list = data.optJSONArray("list") ?: break
+            if (list.length() == 0) break
+            for (i in 0 until list.length()) {
+                val obj = list.optJSONObject(i) ?: continue
+                val mediaId = obj.optLong("id").takeIf { it > 0 } ?: continue
+                val cover = obj.optString("cover").takeIf { it.isNotBlank() }
+                result[mediaId] = cover
+            }
+            val total = data.optInt("count", 0)
+            if (pn * ps >= total) break
+            pn++
+        }
+        return result
     }
 
     data class FavFolderWithState(
