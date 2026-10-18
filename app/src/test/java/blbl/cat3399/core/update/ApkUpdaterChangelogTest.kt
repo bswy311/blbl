@@ -46,4 +46,18 @@ class ApkUpdaterChangelogTest {
         assertEquals("0.3.1", update.versionName)
         assertTrue(update.changelog.contains("新版本"))
     }
+
+    @Test
+    fun isRemoteNewer_debug_build_should_always_be_older() {
+        // debug 包 versionName 为 "debug"，无法解析为版本号，应视为 0.0.0
+        assertTrue(ApkUpdater.isRemoteNewer("0.1.37", "debug"))
+        assertTrue(ApkUpdater.isRemoteNewer("0.0.1", "debug"))
+        assertTrue(ApkUpdater.isRemoteNewer("1.0.0", "debug"))
+    }
+
+    @Test
+    fun isRemoteNewer_same_version_should_return_false() {
+        assertFalse(ApkUpdater.isRemoteNewer("0.1.36", "0.1.36"))
+        assertFalse(ApkUpdater.isRemoteNewer("0.1.36", "0.1.37"))
+    }
 }

@@ -205,7 +205,9 @@ object ApkUpdater {
 
     fun isRemoteNewer(remoteVersionName: String, currentVersionName: String = BuildConfig.VERSION_NAME): Boolean {
         val remote = parseVersion(remoteVersionName) ?: return false
-        val current = parseVersion(currentVersionName) ?: return remoteVersionName.trim() != currentVersionName.trim()
+        // 当前版本无法解析时（如 debug 包 versionName 为 "debug"），视为 0.0.0，
+        // 这样任何正式版本都会被认为是更新版本。
+        val current = parseVersion(currentVersionName) ?: return true
         return compareVersion(remote, current) > 0
     }
 
