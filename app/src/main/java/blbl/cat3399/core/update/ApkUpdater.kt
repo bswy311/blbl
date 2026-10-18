@@ -30,8 +30,12 @@ object ApkUpdater {
     // never be installed over our builds because its APKs are signed with the original author's
     // key, so releasing there would only produce "安装失败" prompts.
     private const val UPDATE_REPO = "bswy311/blbl"
-    private const val CHANGELOG_URL = "https://github.com/$UPDATE_REPO/raw/main/CHANGELOG.md"
-    private const val RELEASE_DOWNLOAD_BASE = "https://github.com/$UPDATE_REPO/releases/download"
+    // GitHub 镜像前缀，用于国内无法直接访问 GitHub 的场景。
+    // 如果镜像失效，可更换为其他可用镜像（如 "https://gh-proxy.com/" 或 ""）。
+    private const val GITHUB_MIRROR = "https://ghfast.top/"
+    private const val GITHUB_BASE = "https://github.com"
+    private const val CHANGELOG_URL = "${GITHUB_MIRROR}${GITHUB_BASE}/$UPDATE_REPO/raw/main/CHANGELOG.md"
+    private const val RELEASE_DOWNLOAD_BASE = "${GITHUB_MIRROR}${GITHUB_BASE}/$UPDATE_REPO/releases/download"
 
     val TEST_CHANGELOG_URL: String
         get() = CHANGELOG_URL
