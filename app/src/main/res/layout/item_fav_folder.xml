@@ -17,16 +17,64 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content">
 
-        <ImageView
-            android:id="@+id/iv_cover"
+        <!-- 2x2 网格封面 -->
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:id="@+id/cover_grid"
             android:layout_width="0dp"
             android:layout_height="0dp"
-            android:adjustViewBounds="true"
-            android:scaleType="centerCrop"
             app:layout_constraintDimensionRatio="16:9"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toTopOf="parent" />
+            app:layout_constraintTop_toTopOf="parent">
+
+            <ImageView
+                android:id="@+id/iv_cover_1"
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:scaleType="centerCrop"
+                app:layout_constraintBottom_toTopOf="@id/iv_cover_3"
+                app:layout_constraintEnd_toStartOf="@id/iv_cover_2"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent"
+                app:layout_constraintWidth_percent="0.5"
+                app:layout_constraintHeight_percent="0.5" />
+
+            <ImageView
+                android:id="@+id/iv_cover_2"
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:scaleType="centerCrop"
+                app:layout_constraintBottom_toTopOf="@id/iv_cover_4"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toEndOf="@id/iv_cover_1"
+                app:layout_constraintTop_toTopOf="parent"
+                app:layout_constraintWidth_percent="0.5"
+                app:layout_constraintHeight_percent="0.5" />
+
+            <ImageView
+                android:id="@+id/iv_cover_3"
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:scaleType="centerCrop"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toStartOf="@id/iv_cover_4"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toBottomOf="@id/iv_cover_1"
+                app:layout_constraintWidth_percent="0.5"
+                app:layout_constraintHeight_percent="0.5" />
+
+            <ImageView
+                android:id="@+id/iv_cover_4"
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:scaleType="centerCrop"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toEndOf="@id/iv_cover_3"
+                app:layout_constraintTop_toBottomOf="@id/iv_cover_2"
+                app:layout_constraintWidth_percent="0.5"
+                app:layout_constraintHeight_percent="0.5" />
+        </androidx.constraintlayout.widget.ConstraintLayout>
 
         <TextView
             android:id="@+id/tv_title"
@@ -40,7 +88,7 @@
             android:textSize="14sp"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/iv_cover" />
+            app:layout_constraintTop_toBottomOf="@id/cover_grid" />
 
         <TextView
             android:id="@+id/tv_count"

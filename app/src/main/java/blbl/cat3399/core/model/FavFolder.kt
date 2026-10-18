@@ -5,5 +5,6 @@ data class FavFolder(
     val title: String,
     val coverUrl: String?,
     val mediaCount: Int,
+    val coverUrls: List<String> = emptyList(),
 )
 

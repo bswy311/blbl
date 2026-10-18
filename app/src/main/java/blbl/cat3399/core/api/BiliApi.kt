@@ -709,6 +709,17 @@ object BiliApi {
                 }
             }
         }
+        // 获取每个收藏夹的前 4 个视频封面（用于 2x2 网格显示）。
+        val gridCoversMap = runCatching { favFolderGridCoversBatch(upMid) }.getOrNull()
+        if (gridCoversMap != null) {
+            for (i in enriched.indices) {
+                val f = enriched[i]
+                val gridCovers = gridCoversMap[f.mediaId]
+                if (!gridCovers.isNullOrEmpty()) {
+                    enriched[i] = f.copy(coverUrls = gridCovers)
+                }
+            }
+        }
         return enriched
     }
 
@@ -744,6 +755,49 @@ object BiliApi {
             val total = data.optInt("count", 0)
             if (pn * ps >= total) break
             pn++
+        }
+        return result
+    }
+
+    /**
+     * 批量获取每个收藏夹的前 4 个视频封面（用于 2x2 网格显示）。
+     * 返回 mediaId → coverUrls（最多 4 个）的映射。
+     */
+    private suspend fun favFolderGridCoversBatch(upMid: Long): Map<Long, List<String>> {
+        val result = HashMap<Long, List<String>>()
+        // 先获取所有收藏夹 ID
+        val allFoldersUrl = BiliClient.withQuery(
+            "https://api.bilibili.com/x/v3/fav/folder/created/list-all",
+            mapOf("up_mid" to upMid.toString(), "type" to "2"),
+        )
+        val allFoldersJson = BiliClient.getJson(allFoldersUrl)
+        if (allFoldersJson.optInt("code", 0) != 0) return result
+        val folderList = allFoldersJson.optJSONObject("data")?.optJSONArray("list") ?: return result
+        
+        // 对每个收藏夹获取前 4 个资源的封面
+        for (i in 0 until folderList.length()) {
+            val folderObj = folderList.optJSONObject(i) ?: continue
+            val mediaId = folderObj.optLong("id").takeIf { it > 0 } ?: continue
+            val resourcesUrl = BiliClient.withQuery(
+                "https://api.bilibili.com/x/v3/fav/resource/list",
+                mapOf(
+                    "media_id" to mediaId.toString(),
+                    "pn" to "1",
+                    "ps" to "4",
+                    "platform" to "web",
+                ),
+            )
+            val resourcesJson = BiliClient.getJson(resourcesUrl)
+            if (resourcesJson.optInt("code", 0) != 0) continue
+            val data = resourcesJson.optJSONObject("data") ?: continue
+            val resources = data.optJSONArray("medias") ?: continue
+            val covers = mutableListOf<String>()
+            for (j in 0 until minOf(resources.length(), 4)) {
+                val res = resources.optJSONObject(j) ?: continue
+                val cover = res.optString("cover").takeIf { it.isNotBlank() }
+                if (cover != null) covers.add(cover)
+            }
+            if (covers.isNotEmpty()) result[mediaId] = covers
         }
         return result
     }
