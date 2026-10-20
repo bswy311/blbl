@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 删除观看记录：表盘（观看记录）+ 叉（删除），环与叉等宽 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="250"
+    android:viewportHeight="250">
+    <!-- 表盘圆环（外圈 r88 + 内圈 r70 镂空，环宽 18） -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M125,37 a88,88 0 1,1 -0.1,0 Z M125,55 a70,70 0 1,0 0.1,0 Z" />
+    <!-- 删除叉（两条斜杠，宽 18，与环等宽） -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M80.6,93.4 L93.4,80.6 L169.4,156.6 L156.6,169.4 Z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M80.6,156.6 L93.4,169.4 L169.4,93.4 L156.6,80.6 Z" />
+</vector>

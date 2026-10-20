@@ -27,6 +27,7 @@ enum class VideoCardConfiguredLongPressAction {
 }
 
 enum class VideoCardQuickActionId {
+    DELETE_HISTORY,
     WATCH_LATER,
     OPEN_DETAIL,
     OPEN_UP,
@@ -39,6 +40,13 @@ data class VideoCardQuickAction(
     val contentDescription: CharSequence,
 ) {
     companion object {
+        fun deleteHistory(label: CharSequence): VideoCardQuickAction =
+            VideoCardQuickAction(
+                id = VideoCardQuickActionId.DELETE_HISTORY,
+                iconResId = R.drawable.ic_video_card_delete_history,
+                contentDescription = label,
+            )
+
         fun watchLater(label: CharSequence): VideoCardQuickAction =
             VideoCardQuickAction(
                 id = VideoCardQuickActionId.WATCH_LATER,

@@ -89,6 +89,17 @@ class VideoCardAdapter(
         return index
     }
 
+    /**
+     * 原地清除某张卡片的观看进度显示（服务端观看记录已删除，标记为未看过）。
+     */
+    fun clearWatchProgress(stableKey: String): Int {
+        val index = items.indexOfFirst { stableKeyFor(it) == stableKey }
+        if (index < 0) return -1
+        items[index] = items[index].copy(progressSec = null, progressFinished = false)
+        notifyItemChanged(index)
+        return index
+    }
+
     override fun getItemId(position: Int): Long {
         val item = items[position]
         val key = stableKeyFor(item)

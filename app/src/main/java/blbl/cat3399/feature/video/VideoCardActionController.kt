@@ -41,6 +41,7 @@ class VideoCardActionController(
     private val onOpenDetail: (VideoCard, Int) -> Unit,
     private val onOpenUp: (VideoCard) -> Unit,
     private val onCardRemoved: (String) -> Unit = {},
+    private val onHistoryDeleted: (String) -> Unit = {},
     private val longPressActionProvider: () -> String = { BiliClient.prefs.videoCardLongPressAction },
 ) : VideoCardActionDelegate {
     private val inFlightActionKeys = HashSet<String>()
@@ -48,14 +49,31 @@ class VideoCardActionController(
     override fun resolveLongPressAction(
         card: VideoCard,
         position: Int,
-    ): VideoCardConfiguredLongPressAction = VideoCardConfiguredLongPressAction.fromPref(longPressActionProvider())
+    ): VideoCardConfiguredLongPressAction {
+        val configured = VideoCardConfiguredLongPressAction.fromPref(longPressActionProvider())
+        // 稍后再看页的第一个动作是「删除观看记录」而不是「稍后再看」：
+        // 配置为「稍后再看」的长按在该页回退为手动选择（弹出 4 按钮），避免长按变死键。
+        if (configured == VideoCardConfiguredLongPressAction.WATCH_LATER &&
+            dismissBehavior is VideoCardDismissBehavior.DeleteToView
+        ) {
+            return VideoCardConfiguredLongPressAction.MANUAL
+        }
+        return configured
+    }
 
     override fun manualActions(
         card: VideoCard,
         position: Int,
     ): List<VideoCardQuickAction> {
+        // 稍后再看页：第一个按钮是「删除观看记录」（标记为未看过），其余页面仍是「添加到稍后再看」。
+        val firstAction =
+            if (dismissBehavior is VideoCardDismissBehavior.DeleteToView) {
+                VideoCardQuickAction.deleteHistory(context.getString(R.string.video_card_action_delete_history))
+            } else {
+                VideoCardQuickAction.watchLater(context.getString(R.string.video_card_action_watch_later))
+            }
         return listOf(
-            VideoCardQuickAction.watchLater(context.getString(R.string.video_card_action_watch_later)),
+            firstAction,
             VideoCardQuickAction.openDetail(context.getString(R.string.video_card_action_open_detail)),
             VideoCardQuickAction.openUp(context.getString(R.string.video_card_action_open_up)),
             VideoCardQuickAction.dismiss(context.getString(dismissActionLabelRes())),
@@ -68,6 +86,7 @@ class VideoCardActionController(
         action: VideoCardQuickAction,
     ) {
         when (action.id) {
+            VideoCardQuickActionId.DELETE_HISTORY -> deleteHistory(card)
             VideoCardQuickActionId.WATCH_LATER -> addToWatchLater(card)
             VideoCardQuickActionId.OPEN_DETAIL -> openDetail(card, position)
             VideoCardQuickActionId.OPEN_UP -> onOpenUp(card)
@@ -105,6 +124,29 @@ class VideoCardActionController(
                     )
                 }
                 AppToast.show(context, context.getString(R.string.video_card_action_watch_later_done))
+            } catch (t: Throwable) {
+                if (t is CancellationException) throw t
+                AppToast.show(context, errorMessage(t))
+            } finally {
+                clearInFlight(actionKey)
+            }
+        }
+    }
+
+    /**
+     * 删除该视频的服务端观看记录（标记为未看过）。只删记录、不动列表里的卡片。
+     */
+    private fun deleteHistory(card: VideoCard) {
+        val actionKey = buildActionKey(card = card, suffix = "delete_history")
+        if (!markInFlight(actionKey)) return
+
+        scope.launch {
+            try {
+                withContext(Dispatchers.IO) {
+                    BiliApi.historyDelete(kid = buildHistoryKid(card))
+                }
+                AppToast.show(context, context.getString(R.string.video_card_action_delete_history_done))
+                onHistoryDeleted(card.stableKey())
             } catch (t: Throwable) {
                 if (t is CancellationException) throw t
                 AppToast.show(context, errorMessage(t))
@@ -202,13 +244,14 @@ class VideoCardActionController(
 
     private suspend fun buildHistoryKid(card: VideoCard): String {
         return when (card.business?.trim()) {
-            "archive" -> "archive_${resolveAid(card)}"
             "pgc" -> {
                 val seasonId = card.seasonId?.takeIf { it > 0L } ?: throw BiliApiException(apiCode = -400, apiMessage = "missing_history_kid")
                 "pgc_$seasonId"
             }
 
-            else -> throw BiliApiException(apiCode = -400, apiMessage = "missing_history_kid")
+            // 历史页的卡片一定带 business；稍后再看等列表解析出的卡片没有该字段，
+            // 按普通稿件处理（观看记录 kid 为 archive_<aid>）。
+            else -> "archive_${resolveAid(card)}"
         }
     }
 

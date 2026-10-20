@@ -900,6 +900,10 @@ internal object VideoApi {
             bvid = bvid,
             cid = obj.optLong("cid").takeIf { it > 0 },
             aid = obj.optLong("aid").takeIf { it > 0 },
+            // 稍后再看等列表的条目可能带 business/season_id（PGC 条目），
+            // 留给「删除观看记录」等动作拼历史 kid 用。
+            business = obj.optString("business", "").takeIf { it.isNotBlank() },
+            seasonId = obj.optLong("season_id", obj.optLong("ssid", 0)).takeIf { it > 0 },
             title = obj.optString("title", ""),
             coverUrl = obj.optString("pic", obj.optString("cover", "")),
             durationSec = durationSec,

@@ -74,6 +74,10 @@ class MyToViewFragment : Fragment(), MyTabSwitchFocusTarget, RefreshKeyHandler {
                             isAlive = { _binding != null && isResumed },
                         )
                     },
+                    onHistoryDeleted = { stableKey ->
+                        // 删除观看记录后立即清除卡片上的进度/「已看完」标记，不用等重新进页面。
+                        adapter.clearWatchProgress(stableKey)
+                    },
                 )
             adapter =
                 VideoCardAdapter(
