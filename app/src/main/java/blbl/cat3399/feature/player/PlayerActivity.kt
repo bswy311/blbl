@@ -166,6 +166,10 @@ class PlayerActivity : BaseActivity() {
     private var finishOnBackKeyUp: Boolean = false
     internal var holdPrevSpeed: Float = 1.0f
     internal var holdPrevPlayWhenReady: Boolean = false
+    internal var holdSpeedBoostActive: Boolean = false
+    internal var persistentHoldSpeedBoost: Boolean = false
+    internal var persistentHoldSpeedRestoreSpeed: Float = 1.0f
+    internal var persistentBoostCancelKeyCode: Int = 0
     internal var holdScrubPreviewPosMs: Long? = null
     internal var keySeekPreviewPosMs: Long? = null
     internal val bufferingOverlayController: PlayerBufferingOverlayController by lazy {
@@ -1490,6 +1494,28 @@ class PlayerActivity : BaseActivity() {
                     return super.dispatchKeyEvent(event)
                 }
             }
+        }
+
+        if (persistentBoostCancelKeyCode == keyCode) {
+            if (event.action == KeyEvent.ACTION_UP) persistentBoostCancelKeyCode = 0
+            return true
+        }
+        if (
+            persistentHoldSpeedBoost &&
+            !isSidePanelVisible() &&
+            !hasControlsFocusOutsideSeekBar() &&
+            (
+                keyCode == KeyEvent.KEYCODE_DPAD_LEFT ||
+                    keyCode == KeyEvent.KEYCODE_MEDIA_REWIND ||
+                    keyCode == KeyEvent.KEYCODE_BUTTON_L1 ||
+                    keyCode == KeyEvent.KEYCODE_BUTTON_L2
+            ) &&
+            event.action == KeyEvent.ACTION_DOWN
+        ) {
+            noteUserInteraction()
+            cancelPersistentHoldSpeedBoost()
+            persistentBoostCancelKeyCode = keyCode
+            return true
         }
 
         if (event.action == KeyEvent.ACTION_DOWN && isInteractionKey(keyCode)) noteUserInteraction()

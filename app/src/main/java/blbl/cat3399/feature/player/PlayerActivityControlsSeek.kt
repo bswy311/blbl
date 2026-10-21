@@ -10,6 +10,7 @@ import blbl.cat3399.R
 import blbl.cat3399.core.log.AppLog
 import blbl.cat3399.core.net.BiliClient
 import blbl.cat3399.core.prefs.AppPrefs
+import blbl.cat3399.core.prefs.PlayerHoldSpeedModes
 import blbl.cat3399.feature.player.engine.BlblPlayerEngine
 import blbl.cat3399.feature.player.engine.PlayerEngineKind
 import java.util.Locale
@@ -568,6 +569,7 @@ internal fun PlayerActivity.startHoldSeek(direction: Int, showControls: Boolean)
     holdPrevSpeed = engine.playbackSpeed
     holdPrevPlayWhenReady = engine.playWhenReady
     holdScrubPreviewPosMs = null
+    holdSpeedBoostActive = false
     if (holdMode == AppPrefs.PLAYER_HOLD_SEEK_MODE_SCRUB || holdMode == AppPrefs.PLAYER_HOLD_SEEK_MODE_SCRUB_FIXED_TIME) {
         val fixedStepMs =
             if (holdMode == AppPrefs.PLAYER_HOLD_SEEK_MODE_SCRUB_FIXED_TIME) {
@@ -578,6 +580,7 @@ internal fun PlayerActivity.startHoldSeek(direction: Int, showControls: Boolean)
         startHoldScrubSeek(engine = engine, direction = direction, speed = holdSpeed, fixedStepMs = fixedStepMs)
         return
     }
+    holdSpeedBoostActive = true
     showSeekHoldHint(direction, holdSpeed)
     engine.setPlaybackSpeed(holdSpeed)
     engine.playWhenReady = true
@@ -609,6 +612,7 @@ internal fun PlayerActivity.startHoldScrub(direction: Int, showControls: Boolean
 }
 
 internal fun PlayerActivity.startHoldScrubSeek(engine: BlblPlayerEngine, direction: Int, speed: Float, fixedStepMs: Long?) {
+    holdSpeedBoostActive = false
     val duration = engine.duration.takeIf { it > 0 } ?: currentViewDurationMs ?: 0L
     if (duration <= 0L) {
         // Unknown duration: cannot show an actual progress bar scrub; fall back to speed-hold.
@@ -670,8 +674,18 @@ internal fun PlayerActivity.stopHoldSeek() {
     }
     holdSeekJob?.cancel()
     holdSeekJob = null
+    val keepSpeed =
+        PlayerHoldSpeedModes.shouldKeepAfterRelease(
+            mode = BiliClient.prefs.playerHoldSpeedReleaseMode,
+            isSpeedHold = holdSpeedBoostActive,
+        )
     if (engine != null) {
-        engine.setPlaybackSpeed(holdPrevSpeed)
+        if (keepSpeed) {
+            if (!persistentHoldSpeedBoost) persistentHoldSpeedRestoreSpeed = holdPrevSpeed
+            persistentHoldSpeedBoost = true
+        } else {
+            engine.setPlaybackSpeed(holdPrevSpeed)
+        }
         if (scrubTarget != null) {
             engine.seekTo(scrubTarget)
             val duration = engine.duration.takeIf { it > 0 } ?: currentViewDurationMs ?: 0L
@@ -680,11 +694,19 @@ internal fun PlayerActivity.stopHoldSeek() {
                 scheduleHideVideoShotPreviewAfterSeek()
             }
         }
-        engine.playWhenReady = holdPrevPlayWhenReady
+        if (!keepSpeed) engine.playWhenReady = holdPrevPlayWhenReady
         val pos = (scrubTarget ?: engine.currentPosition).coerceAtLeast(0L)
         requestDanmakuSegmentsForPosition(pos, immediate = true)
     }
+    holdSpeedBoostActive = false
     scheduleHideSeekHint()
+}
+
+internal fun PlayerActivity.cancelPersistentHoldSpeedBoost() {
+    if (!persistentHoldSpeedBoost) return
+    player?.setPlaybackSpeed(persistentHoldSpeedRestoreSpeed)
+    persistentHoldSpeedBoost = false
+    showSeekHint(getString(R.string.player_hold_speed_cancel_hint), hold = false)
 }
 
 internal fun PlayerActivity.showSeekStepHint(direction: Int, totalMs: Long) {

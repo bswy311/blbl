@@ -6,7 +6,9 @@ import android.view.View
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import blbl.cat3399.BuildConfig
+import blbl.cat3399.R
 import blbl.cat3399.core.net.BiliClient
+import blbl.cat3399.core.prefs.PlayerHoldSpeedModes
 import blbl.cat3399.core.ui.FocusTreeUtils
 import blbl.cat3399.core.ui.requestFocusAdapterPositionReliable
 import blbl.cat3399.databinding.ActivitySettingsBinding
@@ -348,6 +350,18 @@ class SettingsRenderer(
                         null,
                     ),
                     SettingEntry(SettingId.PlayerHoldSeekMode, "长按快进模式", SettingsText.holdSeekModeText(prefs.playerHoldSeekMode), null),
+                    SettingEntry(
+                        SettingId.PlayerHoldSpeedReleaseMode,
+                        activity.getString(R.string.player_hold_speed_release_mode_title),
+                        activity.getString(
+                            if (prefs.playerHoldSpeedReleaseMode == PlayerHoldSpeedModes.KEEP_UNTIL_LEFT) {
+                                R.string.player_hold_speed_release_keep
+                            } else {
+                                R.string.player_hold_speed_release_restore
+                            },
+                        ),
+                        null,
+                    ),
                     SettingEntry(
                         SettingId.PlayerHoldScrubTraverseSeconds,
                         "拖完整个视频所需时间",

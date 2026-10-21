@@ -771,7 +771,10 @@ internal fun PlayerActivity.showSpeedDialog() {
             value = v.coerceIn(0.25f, 4.0f),
             updateSession = { copy(playbackSpeed = it) },
             syncToGlobal = { playerSpeed = it },
-            afterApplied = { player?.setPlaybackSpeed(it) },
+            afterApplied = {
+                persistentHoldSpeedBoost = false
+                player?.setPlaybackSpeed(it)
+            },
         )
     }
 }

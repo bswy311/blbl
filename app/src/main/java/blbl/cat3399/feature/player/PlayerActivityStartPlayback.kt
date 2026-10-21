@@ -355,6 +355,11 @@ internal fun PlayerActivity.startPlayback(
     loadJob = null
 
     currentBvid = safeBvid
+    if (!sameMedia) {
+        if (persistentHoldSpeedBoost) engine.setPlaybackSpeed(persistentHoldSpeedRestoreSpeed)
+        persistentHoldSpeedBoost = false
+        persistentBoostCancelKeyCode = 0
+    }
     currentEpId = epIdExtra
     currentAid = safeAid
     currentSeasonId =

@@ -594,6 +594,10 @@ class AppPrefs(context: Context) {
             prefs.edit().putString(KEY_PLAYER_HOLD_SEEK_MODE, v).apply()
         }
 
+    var playerHoldSpeedReleaseMode: String
+        get() = PlayerHoldSpeedModes.normalize(prefs.getString(KEY_PLAYER_HOLD_SPEED_RELEASE_MODE, null))
+        set(value) = prefs.edit().putString(KEY_PLAYER_HOLD_SPEED_RELEASE_MODE, PlayerHoldSpeedModes.normalize(value)).apply()
+
     var playerHoldScrubTraverseSeconds: Int
         get() =
             normalizePlayerHoldScrubSeconds(
@@ -1195,6 +1199,7 @@ class AppPrefs(context: Context) {
         private const val KEY_PLAYER_SHORT_SEEK_STEP_SECONDS = "player_short_seek_step_seconds"
         private const val KEY_PLAYER_HOLD_SEEK_SPEED = "player_hold_seek_speed"
         private const val KEY_PLAYER_HOLD_SEEK_MODE = "player_hold_seek_mode"
+        private const val KEY_PLAYER_HOLD_SPEED_RELEASE_MODE = "player_hold_speed_release_mode"
         private const val KEY_PLAYER_HOLD_SCRUB_TRAVERSE_SECONDS = "player_hold_scrub_traverse_seconds"
         private const val KEY_PLAYER_HOLD_SCRUB_FIXED_STEP_SECONDS = "player_hold_scrub_fixed_step_seconds"
         private const val KEY_PLAYER_AUTO_RESUME_ENABLED = "player_auto_resume_enabled"

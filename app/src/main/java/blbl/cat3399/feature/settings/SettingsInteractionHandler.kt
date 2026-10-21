@@ -37,6 +37,7 @@ import blbl.cat3399.core.prefs.PlayerCustomShortcut
 import blbl.cat3399.core.prefs.PlayerCustomShortcutAction
 import blbl.cat3399.core.prefs.PlayerCustomShortcutTrigger
 import blbl.cat3399.core.prefs.PlayerPlaybackModes
+import blbl.cat3399.core.prefs.PlayerHoldSpeedModes
 import blbl.cat3399.core.prefs.PlayerCustomShortcutsStore
 import blbl.cat3399.core.ui.AppToast
 import blbl.cat3399.core.ui.Immersive
@@ -1417,6 +1418,25 @@ class SettingsInteractionHandler(
                         options.getOrNull(which)?.first
                             ?: blbl.cat3399.core.prefs.AppPrefs.PLAYER_HOLD_SEEK_MODE_SPEED
                     prefs.playerHoldSeekMode = value
+                    renderer.refreshSection(entry.id)
+                }
+            }
+
+            SettingId.PlayerHoldSpeedReleaseMode -> {
+                val options =
+                    listOf(
+                        PlayerHoldSpeedModes.RESTORE_ON_RELEASE to activity.getString(R.string.player_hold_speed_release_restore),
+                        PlayerHoldSpeedModes.KEEP_UNTIL_LEFT to activity.getString(R.string.player_hold_speed_release_keep),
+                    )
+                val checked = options.indexOfFirst { it.first == prefs.playerHoldSpeedReleaseMode }.coerceAtLeast(0)
+                AppPopup.singleChoice(
+                    context = activity,
+                    title = activity.getString(R.string.player_hold_speed_release_mode_title),
+                    items = options.map { it.second },
+                    checkedIndex = checked,
+                ) { which, _ ->
+                    prefs.playerHoldSpeedReleaseMode =
+                        options.getOrNull(which)?.first ?: PlayerHoldSpeedModes.RESTORE_ON_RELEASE
                     renderer.refreshSection(entry.id)
                 }
             }
