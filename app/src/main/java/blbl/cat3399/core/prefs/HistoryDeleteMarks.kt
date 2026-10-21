@@ -20,20 +20,7 @@ internal object HistoryDeleteMarks {
         existing: Map<String, Long>,
         bvid: String,
         nowSec: Long,
-    ): Map<String, Long> {
-        val key = bvid.trim()
-        if (key.isBlank()) return existing
-        val merged = LinkedHashMap<String, Long>(existing.size + 1)
-        merged.putAll(existing)
-        merged[key] = nowSec
-        val cutoff = nowSec - MAX_AGE_SEC
-        val fresh = merged.filterValues { it > cutoff }
-        if (fresh.size <= MAX_ENTRIES) return fresh
-        return fresh.entries
-            .sortedByDescending { it.value }
-            .take(MAX_ENTRIES)
-            .associate { it.key to it.value }
-    }
+    ): Map<String, Long> = BvidMarks.mark(existing, bvid, nowSec, MAX_AGE_SEC, MAX_ENTRIES)
 
     /** 丢掉"已删除但服务端历史还没跟上"的记录；没被删过、或删除后重新看过的保持原样。 */
     fun withoutDeleted(

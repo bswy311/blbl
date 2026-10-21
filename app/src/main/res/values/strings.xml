@@ -67,8 +67,8 @@
     <string name="video_card_action_not_interested_done">将减少此类视频展示</string>
     <string name="video_card_action_open_detail_unsupported">当前卡片暂不支持进入详情页</string>
     <string name="video_card_action_missing_video_id">未获取到视频信息</string>
-    <string name="video_card_action_delete_history">删除观看记录</string>
-    <string name="video_card_action_delete_history_done">已删除观看记录</string>
+    <string name="video_card_action_clear_progress">清除观看进度</string>
+    <string name="video_card_action_clear_progress_done">已清除观看进度</string>
     <string name="video_card_action_failed">操作失败</string>
     <string name="search_clear">清空</string>
     <string name="search_backspace">后退</string>

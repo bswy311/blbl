@@ -10,6 +10,8 @@ class PlayAllOrderTest {
     private fun card(
         bvid: String,
         durationSec: Int,
+        progressSec: Long? = null,
+        progressFinished: Boolean = false,
     ): VideoCard =
         VideoCard(
             bvid = bvid,
@@ -23,6 +25,8 @@ class PlayAllOrderTest {
             danmaku = null,
             pubDate = null,
             pubDateText = null,
+            progressSec = progressSec,
+            progressFinished = progressFinished,
         )
 
     private fun ids(cards: List<VideoCard>): List<String> = cards.map { it.bvid }
@@ -77,6 +81,48 @@ class PlayAllOrderTest {
         val cards = listOf(card("a", 10), card("b", 10), card("c", 10))
 
         assertEquals(listOf("a", "b", "c"), ids(PlayAllOrder.apply(cards, PlayAllOrder.RECENT_PLAY, recentViewAtByBvid = emptyMap())))
+    }
+
+    @Test
+    fun apply_recent_play_should_play_partially_watched_first_even_if_watched_long_ago() {
+        val cards = listOf(card("recent_no_progress", 100), card("old_with_progress", 100, progressSec = 30L), card("never", 100))
+        val viewAt = mapOf("recent_no_progress" to 900L, "old_with_progress" to 100L)
+
+        assertEquals(
+            listOf("old_with_progress", "recent_no_progress", "never"),
+            ids(PlayAllOrder.apply(cards, PlayAllOrder.RECENT_PLAY, recentViewAtByBvid = viewAt)),
+        )
+    }
+
+    @Test
+    fun apply_recent_play_should_sort_progress_group_by_recency() {
+        val cards =
+            listOf(
+                card("a", 100, progressSec = 10L),
+                card("b", 100, progressSec = 20L),
+                card("c", 100, progressSec = 30L),
+            )
+        val viewAt = mapOf("a" to 100L, "b" to 300L, "c" to 200L)
+
+        assertEquals(
+            listOf("b", "c", "a"),
+            ids(PlayAllOrder.apply(cards, PlayAllOrder.RECENT_PLAY, recentViewAtByBvid = viewAt)),
+        )
+    }
+
+    @Test
+    fun apply_recent_play_should_not_prioritise_finished_videos() {
+        val cards =
+            listOf(
+                card("finished", 100, progressFinished = true),
+                card("partial", 100, progressSec = 40L),
+            )
+        val viewAt = mapOf("finished" to 900L, "partial" to 100L)
+
+        assertEquals(
+            listOf("partial", "finished"),
+            ids(PlayAllOrder.apply(cards, PlayAllOrder.RECENT_PLAY, recentViewAtByBvid = viewAt)),
+        )
     }
 
     @Test

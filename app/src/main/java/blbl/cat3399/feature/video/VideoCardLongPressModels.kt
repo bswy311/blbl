@@ -27,7 +27,7 @@ enum class VideoCardConfiguredLongPressAction {
 }
 
 enum class VideoCardQuickActionId {
-    DELETE_HISTORY,
+    CLEAR_PROGRESS,
     WATCH_LATER,
     OPEN_DETAIL,
     OPEN_UP,
@@ -40,9 +40,10 @@ data class VideoCardQuickAction(
     val contentDescription: CharSequence,
 ) {
     companion object {
-        fun deleteHistory(label: CharSequence): VideoCardQuickAction =
+        /** 只在稍后再看页出现：本机隐藏该视频的观看进度（不碰服务端观看记录）。 */
+        fun clearProgress(label: CharSequence): VideoCardQuickAction =
             VideoCardQuickAction(
-                id = VideoCardQuickActionId.DELETE_HISTORY,
+                id = VideoCardQuickActionId.CLEAR_PROGRESS,
                 iconResId = R.drawable.ic_video_card_delete_history,
                 contentDescription = label,
             )

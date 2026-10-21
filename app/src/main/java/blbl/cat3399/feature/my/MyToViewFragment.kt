@@ -18,6 +18,7 @@ import blbl.cat3399.core.net.BiliClient
 import blbl.cat3399.core.prefs.AppPrefs
 import blbl.cat3399.core.prefs.HistoryDeleteMarks
 import blbl.cat3399.core.prefs.PlayAllOrder
+import blbl.cat3399.core.prefs.ProgressClearedMarks
 import blbl.cat3399.core.ui.AppToast
 import blbl.cat3399.core.ui.DpadGridController
 import blbl.cat3399.core.ui.FocusTreeUtils
@@ -75,14 +76,16 @@ class MyToViewFragment : Fragment(), MyTabSwitchFocusTarget, RefreshKeyHandler {
                             isAlive = { _binding != null && isResumed },
                         )
                     },
-                    onHistoryDeleted = { stableKey ->
-                        // 删除观看记录后立即清除卡片上的进度/「已看完」标记，不用等重新进页面。
+                    onWatchProgressCleared = { stableKey ->
+                        // 清除后立即去掉卡片上的进度/「已看完」标记，不用等重新进页面。
                         adapter.clearWatchProgress(stableKey)
                     },
                 )
             adapter =
                 VideoCardAdapter(
                     onClick = { card, pos ->
+                        // 真的点开播放了，就撤掉本地"清除进度"标记：之后按服务端的新进度显示。
+                        BiliClient.prefs.clearToViewProgressCleared(card.bvid)
                         val cards = adapter.snapshot()
                         if (BiliClient.prefs.playerOpenDetailBeforePlay) {
                             requireContext().openVideoDetailFromCards(
@@ -283,6 +286,8 @@ class MyToViewFragment : Fragment(), MyTabSwitchFocusTarget, RefreshKeyHandler {
     ) {
         val ctx = context ?: return
         if (cards.isEmpty()) return
+        // 真的开始播放了，撤掉这一条的本地"清除进度"标记（与点卡片一致）。
+        BiliClient.prefs.clearToViewProgressCleared(cards.first().bvid)
         AppLog.i("MyToView", "playAll size=${cards.size} order=$order")
         ctx.openPlayerFromPlaybackSource(
             playbackSource = VideoCardPlaybackSource(cards = cards, source = "MyToView"),
@@ -380,7 +385,12 @@ class MyToViewFragment : Fragment(), MyTabSwitchFocusTarget, RefreshKeyHandler {
                 if (pendingFocusFirstItemAfterRefresh) {
                     dpadGridController?.parkFocusForDataSetReset()
                 }
-                adapter.submit(VideoCardVisibilityFilter.filterVisible(list))
+                val cards =
+                    ProgressClearedMarks.hideProgress(
+                        cards = VideoCardVisibilityFilter.filterVisible(list),
+                        clearedAtByBvid = BiliClient.prefs.toViewProgressClearedByBvid(),
+                    )
+                adapter.submit(cards)
                 _binding?.recycler?.postIfAlive(isAlive = { _binding != null }) {
                     if (pendingFocusFirstItemAfterRefresh) {
                         pendingFocusFirstItemAfterRefresh = false

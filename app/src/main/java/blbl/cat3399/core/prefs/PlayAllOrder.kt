@@ -27,8 +27,9 @@ internal object PlayAllOrder {
     const val DURATION_SHORT_FIRST = "duration_short_first"
 
     /**
-     * 按"最近播放"排序（最近看的在前）。时间来自服务端观看历史，需要联网取，
-     * 所以默认只在稍后再看里提供（见 [orderedWithRecentPlay]）。
+     * 按"最近播放"排序：**有观看进度（没看完）的优先**，其次按最近观看时间从近到远，
+     * 没有观看记录的排最后。时间来自服务端观看历史，需要联网取，所以只在稍后再看里提供
+     * （见 [orderedWithRecentPlay]）。
      */
     const val RECENT_PLAY = "recent_play"
 
@@ -92,9 +93,20 @@ internal object PlayAllOrder {
         viewAtByBvid: Map<String, Long>,
     ): List<VideoCard> {
         if (viewAtByBvid.isEmpty()) return cards
-        // 最近播放的在前；没有播放记录的排最后（sortedByDescending 是稳定排序，相等时保持原顺序）。
-        val (played, unplayed) = cards.partition { (viewAtByBvid[it.bvid] ?: 0L) > 0L }
-        return played.sortedByDescending { viewAtByBvid.getValue(it.bvid) } + unplayed
+        // 有进度的（看了一半没看完）排最前，接着是看过但没进度的（已看完/进度已清），
+        // 没有播放记录的排最后；每组内按最近观看时间倒序，稳定排序保证并列时保持原顺序。
+        val (withProgress, rest) = cards.partition { it.hasUnfinishedProgress() }
+        val (played, unplayed) = rest.partition { (viewAtByBvid[it.bvid] ?: 0L) > 0L }
+        return withProgress.sortedByDescending { viewAtByBvid[it.bvid] ?: 0L } +
+            played.sortedByDescending { viewAtByBvid.getValue(it.bvid) } +
+            unplayed
+    }
+
+    /** 看了一半、还没看完（"已看完"不算，因为有进度条才值得优先续播）。 */
+    private fun VideoCard.hasUnfinishedProgress(): Boolean {
+        val progress = progressSec ?: return false
+        if (progress <= 0L || progressFinished) return false
+        return durationSec <= 0 || progress < durationSec
     }
 
     private fun byDuration(

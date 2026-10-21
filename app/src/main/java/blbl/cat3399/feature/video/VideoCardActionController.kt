@@ -41,7 +41,7 @@ class VideoCardActionController(
     private val onOpenDetail: (VideoCard, Int) -> Unit,
     private val onOpenUp: (VideoCard) -> Unit,
     private val onCardRemoved: (String) -> Unit = {},
-    private val onHistoryDeleted: (String) -> Unit = {},
+    private val onWatchProgressCleared: (String) -> Unit = {},
     private val longPressActionProvider: () -> String = { BiliClient.prefs.videoCardLongPressAction },
 ) : VideoCardActionDelegate {
     private val inFlightActionKeys = HashSet<String>()
@@ -65,10 +65,11 @@ class VideoCardActionController(
         card: VideoCard,
         position: Int,
     ): List<VideoCardQuickAction> {
-        // 稍后再看页：第一个按钮是「删除观看记录」（标记为未看过），其余页面仍是「添加到稍后再看」。
+        // 稍后再看页：第一个按钮是「清除观看进度」（只在本机隐藏，不删服务端记录），
+        // 其余页面仍是「添加到稍后再看」。
         val firstAction =
             if (dismissBehavior is VideoCardDismissBehavior.DeleteToView) {
-                VideoCardQuickAction.deleteHistory(context.getString(R.string.video_card_action_delete_history))
+                VideoCardQuickAction.clearProgress(context.getString(R.string.video_card_action_clear_progress))
             } else {
                 VideoCardQuickAction.watchLater(context.getString(R.string.video_card_action_watch_later))
             }
@@ -86,7 +87,7 @@ class VideoCardActionController(
         action: VideoCardQuickAction,
     ) {
         when (action.id) {
-            VideoCardQuickActionId.DELETE_HISTORY -> deleteHistory(card)
+            VideoCardQuickActionId.CLEAR_PROGRESS -> clearLocalWatchProgress(card)
             VideoCardQuickActionId.WATCH_LATER -> addToWatchLater(card)
             VideoCardQuickActionId.OPEN_DETAIL -> openDetail(card, position)
             VideoCardQuickActionId.OPEN_UP -> onOpenUp(card)
@@ -134,27 +135,18 @@ class VideoCardActionController(
     }
 
     /**
-     * 删除该视频的服务端观看记录（标记为未看过）。只删记录、不动列表里的卡片。
+     * 只在本机把这视频当成"没看过"（不碰服务端观看记录，B站其它端仍会显示进度）。
+     * 记一笔标记让重新进页面也不再显示，点开播放时会自动撤掉标记。
      */
-    private fun deleteHistory(card: VideoCard) {
-        val actionKey = buildActionKey(card = card, suffix = "delete_history")
-        if (!markInFlight(actionKey)) return
-
-        scope.launch {
-            try {
-                withContext(Dispatchers.IO) {
-                    BiliApi.historyDelete(kid = buildHistoryKid(card))
-                    BiliClient.prefs.markHistoryDeleted(card.bvid)
-                }
-                AppToast.show(context, context.getString(R.string.video_card_action_delete_history_done))
-                onHistoryDeleted(card.stableKey())
-            } catch (t: Throwable) {
-                if (t is CancellationException) throw t
-                AppToast.show(context, errorMessage(t))
-            } finally {
-                clearInFlight(actionKey)
-            }
+    private fun clearLocalWatchProgress(card: VideoCard) {
+        val bvid = card.bvid.trim()
+        if (bvid.isBlank()) {
+            AppToast.show(context, context.getString(R.string.video_card_action_missing_video_id))
+            return
         }
+        BiliClient.prefs.markToViewProgressCleared(bvid)
+        onWatchProgressCleared(card.stableKey())
+        AppToast.show(context, context.getString(R.string.video_card_action_clear_progress_done))
     }
 
     private fun dismissCard(card: VideoCard) {
