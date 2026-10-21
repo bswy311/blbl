@@ -144,6 +144,7 @@ class VideoCardActionController(
             try {
                 withContext(Dispatchers.IO) {
                     BiliApi.historyDelete(kid = buildHistoryKid(card))
+                    BiliClient.prefs.markHistoryDeleted(card.bvid)
                 }
                 AppToast.show(context, context.getString(R.string.video_card_action_delete_history_done))
                 onHistoryDeleted(card.stableKey())
@@ -200,6 +201,7 @@ class VideoCardActionController(
                             when (val behavior = dismissBehavior) {
                                 VideoCardDismissBehavior.DeleteHistory -> {
                                     BiliApi.historyDelete(kid = buildHistoryKid(card))
+                                    BiliClient.prefs.markHistoryDeleted(card.bvid)
                                 }
 
                                 VideoCardDismissBehavior.DeleteToView -> {

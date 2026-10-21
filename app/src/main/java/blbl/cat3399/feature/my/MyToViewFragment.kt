@@ -16,6 +16,7 @@ import blbl.cat3399.core.log.AppLog
 import blbl.cat3399.core.model.VideoCard
 import blbl.cat3399.core.net.BiliClient
 import blbl.cat3399.core.prefs.AppPrefs
+import blbl.cat3399.core.prefs.HistoryDeleteMarks
 import blbl.cat3399.core.prefs.PlayAllOrder
 import blbl.cat3399.core.ui.AppToast
 import blbl.cat3399.core.ui.DpadGridController
@@ -258,9 +259,15 @@ class MyToViewFragment : Fragment(), MyTabSwitchFocusTarget, RefreshKeyHandler {
                             AppToast.show(ctx, ctx.getString(R.string.play_all_recent_unavailable))
                             emptyMap()
                         }
-                    AppLog.i("MyToView", "playAll recentPlay matched=${viewAtByBvid.size}/${cards.size}")
+                    // 本机刚删过观看记录的视频，服务端历史可能还没跟上，按"没播放记录"处理。
+                    val effectiveViewAt =
+                        HistoryDeleteMarks.withoutDeleted(viewAtByBvid, BiliClient.prefs.historyDeletedAtByBvid())
+                    AppLog.i(
+                        "MyToView",
+                        "playAll recentPlay matched=${viewAtByBvid.size}/${cards.size} effective=${effectiveViewAt.size}",
+                    )
                     launchPlayer(
-                        cards = PlayAllOrder.apply(cards, PlayAllOrder.RECENT_PLAY, recentViewAtByBvid = viewAtByBvid),
+                        cards = PlayAllOrder.apply(cards, PlayAllOrder.RECENT_PLAY, recentViewAtByBvid = effectiveViewAt),
                         order = PlayAllOrder.RECENT_PLAY,
                     )
                 } finally {

@@ -129,6 +129,34 @@ class AppPrefs(context: Context) {
 
     private fun favFolderPlayAllOrderKey(mediaId: Long): String = "$KEY_FAV_FOLDER_PLAY_ALL_ORDER_PREFIX$mediaId"
 
+    /**
+     * 本机删除过观看记录的视频（bvid → 删除时刻秒）。「最近播放」排序用它忽略服务端还没清掉的记录。
+     */
+    fun historyDeletedAtByBvid(): Map<String, Long> {
+        val raw = prefs.getString(KEY_HISTORY_DELETED_AT, null)?.takeIf { it.isNotBlank() } ?: return emptyMap()
+        return runCatching {
+            val obj = JSONObject(raw)
+            buildMap {
+                for (bvid in obj.keys()) {
+                    val at = obj.optLong(bvid)
+                    if (at > 0L) put(bvid, at)
+                }
+            }
+        }.getOrDefault(emptyMap())
+    }
+
+    fun markHistoryDeleted(
+        bvid: String,
+        nowSec: Long = System.currentTimeMillis() / 1000L,
+    ) {
+        val key = bvid.trim()
+        if (key.isBlank()) return
+        val updated = HistoryDeleteMarks.mark(historyDeletedAtByBvid(), key, nowSec)
+        val obj = JSONObject()
+        for ((bvidKey, at) in updated) obj.put(bvidKey, at)
+        prefs.edit().putString(KEY_HISTORY_DELETED_AT, obj.toString()).apply()
+    }
+
     var followingListOrder: String
         get() {
             val raw = prefs.getString(KEY_FOLLOWING_LIST_ORDER, FOLLOWING_LIST_ORDER_FOLLOW_TIME) ?: FOLLOWING_LIST_ORDER_FOLLOW_TIME
@@ -1094,6 +1122,7 @@ class AppPrefs(context: Context) {
         private const val KEY_MAIN_MY_VISIBLE_TABS = "main_my_visible_tabs"
         private const val KEY_TO_VIEW_PLAY_ALL_ORDER = "to_view_play_all_order"
         private const val KEY_FAV_FOLDER_PLAY_ALL_ORDER_PREFIX = "fav_folder_play_all_order_"
+        private const val KEY_HISTORY_DELETED_AT = "history_deleted_at"
         private const val KEY_FOLLOWING_LIST_ORDER = "following_list_order"
         private const val KEY_DYNAMIC_FOLLOWING_RECENT_UPDATE_DOT_ENABLED = "dynamic_following_recent_update_dot_enabled"
         private const val KEY_AUTO_UPDATE_CHECK_ENABLED = "auto_update_check_enabled"

@@ -154,7 +154,7 @@ object ApkUpdateFlow {
                             when (dlState) {
                                 ApkUpdater.Progress.Connecting -> {
                                     popup?.updateProgress(null)
-                                    popup?.updateStatus("连接中…")
+                                    popup?.updateStatus("正在选择最快的下载源…")
                                 }
 
                                 is ApkUpdater.Progress.Downloading -> {
