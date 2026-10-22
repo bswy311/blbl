@@ -1,9 +1,6 @@
 ﻿package blbl.cat3399.feature.settings
 
 import android.app.Activity
-import android.content.ActivityNotFoundException
-import android.content.ClipData
-import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
@@ -14,6 +11,7 @@ import android.view.KeyEvent
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.ImageView
 import android.widget.TextView
 import androidx.activity.result.ActivityResult
 import androidx.activity.result.ActivityResultLauncher
@@ -22,13 +20,12 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import blbl.cat3399.R
 import blbl.cat3399.BuildConfig
-import blbl.cat3399.core.io.CreateDocumentRequest
 import blbl.cat3399.core.io.DocumentExporter
 import blbl.cat3399.core.log.AppLog
 import blbl.cat3399.core.log.LogExporter
-import blbl.cat3399.core.log.LogUploadClient
 import blbl.cat3399.core.model.Zone
 import blbl.cat3399.core.net.BiliClient
+import blbl.cat3399.core.net.LanShareServer
 import blbl.cat3399.core.prefs.AppConfigBackup
 import blbl.cat3399.core.prefs.AppPrefs
 import blbl.cat3399.core.prefs.CustomPageConfig
@@ -41,11 +38,13 @@ import blbl.cat3399.core.prefs.PlayerHoldSpeedModes
 import blbl.cat3399.core.prefs.PlayerCustomShortcutsStore
 import blbl.cat3399.core.ui.AppToast
 import blbl.cat3399.core.ui.Immersive
+import blbl.cat3399.core.ui.QrCodeUtil
 import blbl.cat3399.core.ui.ThemeColor
 import blbl.cat3399.core.ui.requestFocusAdapterPositionReliable
 import blbl.cat3399.core.ui.popup.AppPopup
 import blbl.cat3399.core.ui.popup.PopupAction
 import blbl.cat3399.core.ui.popup.PopupActionRole
+import blbl.cat3399.core.ui.popup.PopupHandle
 import blbl.cat3399.core.update.ApkUpdateFlow
 import blbl.cat3399.core.update.ApkUpdater
 import blbl.cat3399.feature.player.engine.IjkPlayerPlugin
@@ -65,7 +64,6 @@ import blbl.cat3399.ui.MainActivity
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
@@ -82,25 +80,17 @@ class SettingsInteractionHandler(
     private val activity: SettingsActivity,
     private val state: SettingsState,
     private val gaiaVgateLauncher: ActivityResultLauncher<Intent>,
-    private val exportDocumentLauncher: ActivityResultLauncher<CreateDocumentRequest>,
-    private val importConfigLauncher: ActivityResultLauncher<Array<String>>,
 ) {
     lateinit var renderer: SettingsRenderer
 
-    private data class PreparedLogsExport(
-        val fileName: String,
-        val nowMs: Long,
-        val extras: List<LogExporter.ZipExtra>,
-    )
-
     private var testUpdateJob: Job? = null
     private var testUpdateCheckJob: Job? = null
-    private var exportLogsJob: Job? = null
-    private var uploadLogsJob: Job? = null
+    private var lanShareJob: Job? = null
+    private var lanShareServer: LanShareServer? = null
+    private var lanSharePopup: PopupHandle? = null
     private var clearCacheJob: Job? = null
     private var cacheSizeJob: Job? = null
     private var configTransferJob: Job? = null
-    private var pendingDocumentExport: ((Uri) -> Unit)? = null
 
     fun onSectionShown(sectionName: String) {
         when (sectionName) {
@@ -120,186 +110,6 @@ class SettingsInteractionHandler(
         prefs.gaiaVgateVVoucherSavedAtMs = -1L
         AppToast.show(activity, "验证成功，已写入风控票据")
         renderer.refreshSection(SettingId.GaiaVgate)
-    }
-
-    fun onExportDocumentSelected(uri: Uri?) {
-        val export = pendingDocumentExport
-        pendingDocumentExport = null
-        if (uri == null || export == null) return
-        export(uri)
-    }
-
-    fun onImportConfigSelected(uri: Uri?) {
-        if (uri == null) return
-        importConfigFromUri(uri)
-    }
-
-    private fun exportLogsToUri(
-        uri: Uri,
-        prepared: PreparedLogsExport,
-    ) {
-        exportLogsJob?.cancel()
-        exportLogsJob =
-            launchIoJob(
-                startToast = "正在导出日志…",
-                failureLogMessage = "export logs failed",
-                failureToastPrefix = "导出失败",
-                work = {
-                    LogExporter.exportToUri(
-                        context = activity,
-                        uri = uri,
-                        nowMs = prepared.nowMs,
-                        fileNameOverride = prepared.fileName,
-                        extras = prepared.extras,
-                    )
-                },
-            ) { result ->
-                AppToast.showLong(activity, "已导出：${result.fileName}（${result.includedFiles}个文件）")
-            }
-    }
-
-    private fun exportLogsToLocalFile(prepared: PreparedLogsExport) {
-        exportLogsJob?.cancel()
-        exportLogsJob =
-            launchIoJob(
-                startToast = "正在导出日志到本地…",
-                failureLogMessage = "export logs (local) failed",
-                failureToastPrefix = "导出失败",
-                work = {
-                    LogExporter.exportToLocalFile(
-                        context = activity,
-                        nowMs = prepared.nowMs,
-                        fileNameOverride = prepared.fileName,
-                        extras = prepared.extras,
-                    )
-                },
-            ) { result ->
-                val path = result.file.absolutePath
-                AppToast.showLong(activity, "无法打开保存文件，已导出到本地：${result.fileName}（${result.includedFiles}个文件）\n路径：$path")
-            }
-    }
-
-    /**
-     * 枚举已挂载的存储卷（含 U 盘），返回 (label, volumeRoot) 列表。
-     * 扫描多个常见挂载路径，尽量兼容不同电视厂商的存储布局。
-     */
-    private fun listExportVolumes(): List<Pair<String, File>> {
-        val result = mutableListOf<Pair<String, File>>()
-        val seen = HashSet<String>()
-
-        // 收集所有候选挂载点
-        val candidates = mutableListOf<File>()
-
-        // 1) /storage/ 下的所有目录（跳过系统伪挂载）
-        File("/storage").listFiles()?.forEach { candidates.add(it) }
-
-        // 2) getExternalFilesDirs 返回的所有路径（提取卷根）
-        androidx.core.content.ContextCompat.getExternalFilesDirs(activity, null).forEach { dir ->
-            if (dir == null) return@forEach
-            val path = dir.absolutePath
-            val idx = path.indexOf("/Android/data")
-            if (idx > 0) candidates.add(File(path.substring(0, idx)))
-        }
-
-        // 3) /mnt/media_rw/（部分设备 USB 挂载点）
-        File("/mnt/media_rw").listFiles()?.forEach { candidates.add(it) }
-
-        for (candidate in candidates) {
-            val canonical = runCatching { candidate.canonicalPath }.getOrDefault(candidate.absolutePath)
-            if (!seen.add(canonical)) continue
-            if (!candidate.isDirectory) continue
-            val name = candidate.name
-            if (name == "self" || name == "emulated") continue
-
-            // 尝试写测试文件确认是否真的可写
-            val testOk = runCatching {
-                val testDir = File(candidate, "Android/data/${activity.packageName}/files")
-                testDir.mkdirs()
-                val t = File(testDir, ".write_test")
-                val ok = t.createNewFile() && t.delete()
-                ok
-            }.getOrDefault(false)
-            if (!testOk) continue
-
-            val isRemovable = runCatching { android.os.Environment.isExternalStorageRemovable(candidate) }.getOrDefault(name.matches(Regex("[A-F0-9]{4}-[A-F0-9]{4}")))
-            val label = if (isRemovable) "U盘/SD卡 (${name})" else "内部存储"
-            AppLog.i("Settings", "listExportVolumes: found volume=$canonical label=$label")
-            result.add(label to candidate)
-        }
-
-        // 诊断日志：输出 /storage/ 内容，方便排查
-        val storageContents = runCatching { File("/storage").listFiles()?.map { it.name }?.joinToString() }.getOrNull()
-        AppLog.i("Settings", "listExportVolumes: /storage/ contents=[$storageContents], found ${result.size} volume(s)")
-
-        // 如果没找到任何外部存储，回退到默认内部存储
-        if (result.isEmpty()) {
-            val internal = activity.getExternalFilesDir(null)
-            if (internal != null) {
-                result.add("内部存储" to internal)
-            }
-        }
-        return result
-    }
-
-    private fun showExport日志存储卷选择器(prepared: PreparedLogsExport) {
-        val volumes = listExportVolumes()
-        when {
-            volumes.isEmpty() -> {
-                // 无可用存储，回退到默认本地导出
-                exportLogsToLocalFile(prepared)
-            }
-            volumes.size == 1 -> {
-                // 只有一个存储卷，直接导出
-                exportLogsToVolume(prepared, volumes[0].second, volumes[0].first)
-            }
-            else -> {
-                // 多个存储卷，让用户选
-                val labels = volumes.map { it.first }
-                AppPopup.singleChoice(
-                    context = activity,
-                    title = "导出日志到…",
-                    items = labels,
-                    checkedIndex = 0,
-                ) { which, _ ->
-                    val (_, targetDir) = volumes[which]
-                    val label = labels[which]
-                    exportLogsToVolume(prepared, targetDir, label)
-                }
-            }
-        }
-    }
-
-    private fun exportLogsToVolume(prepared: PreparedLogsExport, volumeRoot: File, volumeLabel: String) {
-        exportLogsJob?.cancel()
-        exportLogsJob =
-            launchIoJob(
-                startToast = "正在导出日志到${volumeLabel}…",
-                failureLogMessage = "export logs to volume failed",
-                failureToastPrefix = "导出失败",
-                work = {
-                    // 先尝试用户友好的根目录 blbl_logs/
-                    var exportDir = File(volumeRoot, "blbl_logs")
-                    val canWriteRoot = runCatching {
-                        exportDir.mkdirs()
-                        val t = File(exportDir, ".write_test")
-                        t.createNewFile() && t.delete()
-                    }.getOrDefault(false)
-                    if (!canWriteRoot) {
-                        // 回退到 app 专属目录（保证可写）
-                        exportDir = File(volumeRoot, "Android/data/${activity.packageName}/files/blbl_logs")
-                    }
-                    LogExporter.exportToDirectory(
-                        context = activity,
-                        targetDir = exportDir,
-                        nowMs = prepared.nowMs,
-                        fileNameOverride = prepared.fileName,
-                        extras = prepared.extras,
-                    )
-                },
-            ) { result ->
-                val path = result.file.absolutePath
-                AppToast.showLong(activity, "已导出到${volumeLabel}：${result.fileName}（${result.includedFiles}个文件）\n路径：$path")
-            }
     }
 
     private fun showConfigTransferDialog() {
@@ -342,88 +152,90 @@ class SettingsInteractionHandler(
 
     private fun startConfigExport(mode: AppConfigBackup.ExportMode) {
         if (!ensureConfigTransferIdle()) return
-        val prepared = prepareConfigExport(mode)
-        launchDocumentExport(
-            request = CreateDocumentRequest(mimeType = AppConfigBackup.JSON_MIME, fileName = prepared.fileName),
-            onUriSelected = { uri -> exportConfigToUri(uri = uri, prepared = prepared) },
-            onFallbackToLocal = { exportConfigToLocalFile(prepared) },
-            logTag = "config",
-        )
-    }
-
-    private fun exportConfigToUri(
-        uri: Uri,
-        prepared: AppConfigBackup.PreparedExport,
-    ) {
+        stopLanShareServer()
         configTransferJob =
             launchIoJob(
-                startToast = exportStartToast(prepared.mode),
-                failureLogMessage = "export config failed",
+                startToast = exportStartToast(mode),
+                failureLogMessage = "prepare config export failed",
                 failureToastPrefix = "导出失败",
-                work = {
-                    DocumentExporter.exportToUri(
-                        context = activity,
-                        uri = uri,
-                        fileName = prepared.fileName,
-                    ) { out ->
-                        out.write(prepared.jsonText.toByteArray(Charsets.UTF_8))
-                    }
-                },
-            ) { result ->
-                AppToast.showLong(activity, "已导出：${result.fileName}")
-            }
-    }
-
-    private fun exportConfigToLocalFile(prepared: AppConfigBackup.PreparedExport) {
-        configTransferJob =
-            launchIoJob(
-                startToast = "${exportStartToast(prepared.mode)}到本地…",
-                failureLogMessage = "export config (local) failed",
-                failureToastPrefix = "导出失败",
-                work = {
-                    DocumentExporter.exportToLocalFile(
-                        context = activity,
-                        fileName = prepared.fileName,
-                        subDir = "exports",
-                    ) { out ->
-                        out.write(prepared.jsonText.toByteArray(Charsets.UTF_8))
-                    }
-                },
-            ) { result ->
-                AppToast.showLong(activity, "无法打开保存文件，已导出到本地：${result.fileName}\n路径：${result.file.absolutePath}")
+                work = { prepareConfigExport(mode) },
+            ) { prepared ->
+                val jsonBytes = prepared.jsonText.toByteArray(Charsets.UTF_8)
+                val server =
+                    LanShareServer(
+                        download =
+                            LanShareServer.DownloadResource.ofBytes(
+                                bytes = jsonBytes,
+                                fileName = prepared.fileName,
+                                contentType = "application/json",
+                            ),
+                    )
+                val urls = server.start()
+                if (urls.isEmpty()) {
+                    AppLog.w("Settings", "lan share config export start failed")
+                    AppToast.showLong(activity, "启动局域网服务失败：设备没有可用网络")
+                    return@launchIoJob
+                }
+                lanShareServer = server
+                showLanShareDialog(
+                    urls = urls,
+                    title =
+                        if (mode == AppConfigBackup.ExportMode.CONFIG_WITH_CREDENTIALS) {
+                            "局域网导出配置与登录状态"
+                        } else {
+                            "局域网导出配置"
+                        },
+                    hint =
+                        "手机/电脑连接同一WiFi，扫码或访问上方地址即可下载配置文件。" +
+                            (if (mode == AppConfigBackup.ExportMode.CONFIG_WITH_CREDENTIALS) "文件包含登录状态，请妥善保管。" else "") +
+                            "关闭此窗口后服务停止。",
+                )
             }
     }
 
     private fun startImportConfig() {
         if (!ensureConfigTransferIdle()) return
-        try {
-            importConfigLauncher.launch(arrayOf(AppConfigBackup.JSON_MIME, "text/plain", "application/octet-stream"))
-        } catch (e: ActivityNotFoundException) {
-            AppLog.w("Settings", "OpenDocument not supported", e)
-            AppToast.showLong(activity, "当前设备不支持导入配置")
-        } catch (t: Throwable) {
-            AppLog.w("Settings", "open import config picker failed", t)
-            AppToast.showLong(activity, "打开导入文件失败")
+        stopLanShareServer()
+        val server =
+            LanShareServer(
+                upload =
+                    LanShareServer.UploadResource(
+                        label = "配置",
+                        accept = { body -> handleLanImportUpload(body) },
+                    ),
+            )
+        val urls = server.start()
+        if (urls.isEmpty()) {
+            AppLog.w("Settings", "lan share config import start failed")
+            AppToast.showLong(activity, "启动局域网服务失败：设备没有可用网络")
+            return
         }
+        lanShareServer = server
+        showLanShareDialog(
+            urls = urls,
+            title = "局域网导入配置",
+            hint =
+                "手机/电脑连接同一WiFi，扫码或访问上方地址，选择 blbl 配置文件上传。" +
+                    "电视端确认后生效并重启。关闭此窗口后服务停止。",
+        )
     }
 
-    private fun importConfigFromUri(uri: Uri) {
-        if (!ensureConfigTransferIdle()) return
-        configTransferJob =
-            launchIoJob(
-                startToast = "正在读取配置…",
-                failureLogMessage = "import config read failed",
-                failureToastPrefix = "读取配置失败",
-                work = {
-                    val text =
-                        activity.contentResolver.openInputStream(uri)?.use { input ->
-                            input.readBytes().toString(Charsets.UTF_8).removePrefix("\uFEFF")
-                        } ?: error("无法读取配置文件")
-                    AppConfigBackup.parse(text)
-                },
-            ) { parsed ->
-                showImportConfigConfirmDialog(parsed)
+    /** Runs on the share server worker thread: parse and validate the uploaded bytes. */
+    private fun handleLanImportUpload(body: ByteArray): LanShareServer.UploadResponse {
+        val text = body.toString(Charsets.UTF_8).removePrefix("\uFEFF")
+        val parsed =
+            try {
+                AppConfigBackup.parse(text)
+            } catch (e: Exception) {
+                AppLog.w("Settings", "lan import config rejected", e)
+                return LanShareServer.UploadResponse.Rejected(e.message ?: "解析失败")
             }
+        activity.runOnUiThread {
+            lanSharePopup?.dismiss()
+            lanSharePopup = null
+            showImportConfigConfirmDialog(parsed)
+        }
+        return LanShareServer.UploadResponse.Accepted("上传成功，请在电视上确认")
     }
 
     private fun showImportConfigConfirmDialog(parsed: AppConfigBackup.ParsedBackup) {
@@ -462,6 +274,7 @@ class SettingsInteractionHandler(
                     )
                 },
             ) {
+                stopLanShareServer()
                 evictNetworkConnections()
                 AppToast.showLong(activity, if (parsed.includesCredentials) "已导入配置与登录状态，正在重启…" else "已导入配置，正在重启…")
                 restartToMain()
@@ -485,143 +298,92 @@ class SettingsInteractionHandler(
         }
     }
 
-    private fun showUploadLogsDialog() {
-        if (uploadLogsJob?.isActive == true) {
-            AppToast.show(activity, "正在上传…")
+    private fun showLanShareLogsDialog() {
+        if (lanShareJob?.isActive == true) {
+            AppToast.show(activity, "正在打包…")
             return
         }
-
-        AppPopup.confirm(
-            context = activity,
-            title = "上传日志",
-            message =
-                "将日志上传给开发者便于排查问题。\n\n" +
-                    "会随日志附带设备、版本、屏幕和非登录配置元数据，不包含登录 Cookie。\n\n" +
-                    "反馈问题时请带上上传成功后显示的文件名。",
-            positiveText = "上传",
-            negativeText = "取消",
-            cancelable = true,
-            onPositive = { startUploadLogs() },
-        )
-    }
-
-    private fun startUploadLogs() {
-        uploadLogsJob?.cancel()
-        val popup =
-            AppPopup.progress(
-                context = activity,
-                title = "上传日志",
-                status = "准备中…",
-                negativeText = "取消",
-                cancelable = false,
-                onNegative = { uploadLogsJob?.cancel() },
-            )
-
-        uploadLogsJob =
-            activity.lifecycleScope.launch {
-                var exportedFile: File? = null
-                try {
+        stopLanShareServer()
+        lanShareJob =
+            launchIoJob(
+                startToast = "正在打包日志…",
+                failureLogMessage = "lan share logs failed",
+                failureToastPrefix = "局域网导出失败",
+                work = {
                     val nowMs = System.currentTimeMillis()
-                    val deviceUuid = BiliClient.prefs.deviceUuid
-                    val epochSeconds = (nowMs / 1000L).coerceAtLeast(0L)
-                    val deviceId8 = deviceUuid.replace("-", "").take(8).ifBlank { "unknown00" }
-                    val fileName = "${epochSeconds}-${deviceId8}.zip"
-                    val metaJson = buildUploadMetaJson(nowMs = nowMs, deviceUuid = deviceUuid)
-
-                    popup?.updateProgress(null)
-                    popup?.updateStatus("打包中…")
-                    val export =
-                        withContext(Dispatchers.IO) {
-                            LogExporter.exportToLocalFile(
-                                context = activity,
-                                nowMs = nowMs,
-                                fileNameOverride = fileName,
-                                extras =
-                                    listOf(
-                                        LogExporter.ZipExtra(
-                                            path = "meta.json",
-                                            bytes = metaJson.toByteArray(Charsets.UTF_8),
-                                        ),
-                                    ),
-                            )
-                        }
-                    exportedFile = export.file
-
-                    currentCoroutineContext().ensureActive()
-                    popup?.updateProgress(0)
-                    popup?.updateStatus("上传中… 0%")
-                    var lastPct = -1
-                    var lastUpdateAtMs = 0L
-                    withContext(Dispatchers.IO) {
-                        LogUploadClient.uploadZip(
-                            file = export.file,
-                            fileName = export.fileName,
-                            onProgress = { sentBytes, totalBytes ->
-                                if (totalBytes <= 0L) return@uploadZip
-                                val pct = ((sentBytes.coerceAtLeast(0L) * 100L) / totalBytes).toInt().coerceIn(0, 100)
-                                val now = System.currentTimeMillis()
-                                if (pct == lastPct && now - lastUpdateAtMs < 80L) return@uploadZip
-                                lastPct = pct
-                                lastUpdateAtMs = now
-                                val hint = "${SettingsText.formatBytes(sentBytes)}/${SettingsText.formatBytes(totalBytes)}"
-                                popup?.updateProgress(pct)
-                                popup?.updateStatus("上传中… ${pct}% $hint")
-                            },
-                        )
-                    }
-
-                    popup?.dismiss()
-                    showUploadLogsSuccessPopup(
-                        fileName = export.fileName,
+                    val metaJson = buildLogMetaJson(nowMs = nowMs, deviceUuid = BiliClient.prefs.deviceUuid)
+                    LogExporter.exportToLocalFile(
+                        context = activity,
+                        nowMs = nowMs,
+                        extras = buildLogExportExtras(metaJson),
                     )
-                } catch (_: CancellationException) {
-                    popup?.dismiss()
-                } catch (t: Throwable) {
-                    popup?.dismiss()
-                    AppLog.w("Settings", "upload logs failed", t)
-                    val msg = t.message?.takeIf { it.isNotBlank() } ?: "未知错误"
-                    AppToast.showLong(activity, "上传失败：$msg")
-                } finally {
-                    withContext(NonCancellable + Dispatchers.IO) {
-                        exportedFile?.let { runCatching { it.delete() } }
-                    }
+                },
+            ) { export ->
+                val server =
+                    LanShareServer(
+                        download =
+                            LanShareServer.DownloadResource.ofFile(
+                                file = export.file,
+                                fileName = export.fileName,
+                                contentType = "application/zip",
+                            ),
+                    )
+                val urls = server.start()
+                if (urls.isEmpty()) {
+                    AppLog.w("Settings", "lan share start failed")
+                    AppToast.showLong(activity, "启动局域网服务失败：设备没有可用网络")
+                    return@launchIoJob
                 }
+                lanShareServer = server
+                showLanShareDialog(
+                    urls = urls,
+                    title = "局域网导出日志",
+                    hint =
+                        "手机/电脑连接同一WiFi，扫码或访问上方地址即可下载日志（${SettingsText.formatBytes(export.file.length())}）。" +
+                            "关闭此窗口后服务停止。",
+                )
             }
     }
 
-    private fun showUploadLogsSuccessPopup(
-        fileName: String,
-    ) {
-        val body = "文件：$fileName"
-
-        AppPopup.custom(
-            context = activity,
-            title = "上传成功",
-            cancelable = true,
-            actions =
-                listOf(
-                    PopupAction(role = PopupActionRole.NEGATIVE, text = "关闭"),
-                    PopupAction(role = PopupActionRole.NEUTRAL, text = "复制文件名") {
-                        copyToClipboard(label = "日志文件名", text = fileName, toastText = "已复制文件名")
-                    },
-                ),
-            preferredActionRole = PopupActionRole.NEUTRAL,
-            content = { dialogContext ->
-                val tv =
-                    android.view.LayoutInflater.from(dialogContext)
-                        .inflate(blbl.cat3399.R.layout.view_popup_message, null, false) as TextView
-                tv.text = body
-                tv
-            },
-        )
+    private fun stopLanShareServer() {
+        lanShareServer?.stop()
+        lanShareServer = null
     }
 
-    private fun formatUploadTimestamp(nowMs: Long): String {
+    private fun showLanShareDialog(urls: List<String>, title: String, hint: String) {
+        lanSharePopup =
+            AppPopup.custom(
+                context = activity,
+                title = title,
+                cancelable = true,
+                actions =
+                    listOf(
+                        PopupAction(role = PopupActionRole.NEGATIVE, text = "停止") { stopLanShareServer() },
+                    ),
+                preferredActionRole = PopupActionRole.NEGATIVE,
+                onDismiss = {
+                    lanSharePopup = null
+                    stopLanShareServer()
+                },
+            ) { ctx ->
+                val view = LayoutInflater.from(ctx).inflate(R.layout.view_popup_lan_share, null, false)
+                val ivQr = view.findViewById<ImageView>(R.id.iv_qr)
+                val tvUrl = view.findViewById<TextView>(R.id.tv_url)
+                val tvHint = view.findViewById<TextView>(R.id.tv_hint)
+                val sizePx = (220 * ctx.resources.displayMetrics.density).toInt().coerceAtLeast(1)
+                ivQr.setImageBitmap(QrCodeUtil.themed(ctx, urls.first(), sizePx))
+                tvUrl.text = urls.joinToString("\n")
+                tvHint.text = hint
+                view
+            }
+    }
+
+    private fun formatLogTimestamp(nowMs: Long): String {
         val sdf = SimpleDateFormat("yyyyMMdd_HHmmss_SSS", Locale.US)
         return runCatching { sdf.format(Date(nowMs)) }.getOrNull()?.takeIf { it.isNotBlank() } ?: nowMs.toString()
     }
 
-    private fun buildUploadMetaJson(
+    private fun buildLogMetaJson(
         nowMs: Long,
         deviceUuid: String,
     ): String {
@@ -635,7 +397,7 @@ class SettingsInteractionHandler(
                 .put("schema", 1)
                 .put("device_uuid", deviceUuid)
                 .put("export_at_ms", nowMs)
-                .put("export_at", formatUploadTimestamp(nowMs))
+                .put("export_at", formatLogTimestamp(nowMs))
                 .put("time_zone", tzId)
                 .put("locale", localeTag)
                 .put(
@@ -712,36 +474,6 @@ class SettingsInteractionHandler(
                     .put("scaled_density", systemScaledDensity)
                     .put("density_dpi", sysDm.densityDpi),
             )
-    }
-
-    private fun prepareLogsExport(nowMs: Long = System.currentTimeMillis()): PreparedLogsExport {
-        val deviceUuid = BiliClient.prefs.deviceUuid
-        val metaJson = buildUploadMetaJson(nowMs = nowMs, deviceUuid = deviceUuid)
-        return PreparedLogsExport(
-            fileName = LogExporter.suggestExportFileName(nowMs = nowMs),
-            nowMs = nowMs,
-            extras = buildLogExportExtras(metaJson),
-        )
-    }
-
-    private fun launchDocumentExport(
-        request: CreateDocumentRequest,
-        onUriSelected: (Uri) -> Unit,
-        onFallbackToLocal: () -> Unit,
-        logTag: String,
-    ) {
-        pendingDocumentExport = onUriSelected
-        try {
-            exportDocumentLauncher.launch(request)
-        } catch (e: ActivityNotFoundException) {
-            pendingDocumentExport = null
-            AppLog.w("Settings", "CreateDocument not supported; fallback to local $logTag export", e)
-            onFallbackToLocal()
-        } catch (t: Throwable) {
-            pendingDocumentExport = null
-            AppLog.w("Settings", "open $logTag export picker failed; fallback to local export", t)
-            onFallbackToLocal()
-        }
     }
 
     private fun ensureConfigTransferIdle(): Boolean {
@@ -865,17 +597,11 @@ class SettingsInteractionHandler(
                 renderer.refreshSection(entry.id)
             }
             SettingId.GaiaVgate -> showGaiaVgateDialog(state.currentSectionIndex, entry.id)
+            SettingId.ResetDeviceFingerprint -> showResetDeviceFingerprintDialog(state.currentSectionIndex, entry.id)
             SettingId.ClearCache -> showClearCacheDialog(state.currentSectionIndex, entry.id)
             SettingId.ConfigTransfer -> showConfigTransferDialog()
             SettingId.ClearLogin -> showClearLoginDialog(state.currentSectionIndex, entry.id)
-            SettingId.ExportLogs -> {
-                val prepared = prepareLogsExport()
-                showExport日志存储卷选择器(prepared)
-            }
-
-            SettingId.UploadLogs -> {
-                showUploadLogsDialog()
-            }
+            SettingId.LanShareLogs -> showLanShareLogsDialog()
 
             SettingId.AutoUpdateCheckEnabled -> {
                 prefs.autoUpdateCheckEnabled = !prefs.autoUpdateCheckEnabled
@@ -3043,6 +2769,23 @@ class SettingsInteractionHandler(
         }
     }
 
+    private fun showResetDeviceFingerprintDialog(sectionIndex: Int, focusId: SettingId) {
+        AppPopup.confirm(
+            context = activity,
+            title = "重置设备指纹",
+            message = "播放被限速（持续卡顿、网速只有几十 KB）时可重置本机设备指纹，不影响登录状态和其它设置。确定重置吗？",
+            positiveText = "确定重置",
+            negativeText = "取消",
+            cancelable = true,
+            onPositive = {
+                BiliClient.resetDeviceFingerprint()
+                evictNetworkConnections()
+                AppToast.show(activity, "设备指纹已重置，重新打开视频生效")
+                renderer.showSection(sectionIndex, focusId = focusId)
+            },
+        )
+    }
+
     private fun showClearLoginDialog(sectionIndex: Int, focusId: SettingId) {
         AppPopup.confirm(
             context = activity,
@@ -3231,16 +2974,6 @@ class SettingsInteractionHandler(
         }.onFailure {
             AppToast.show(activity, "无法打开链接")
         }
-    }
-
-    private fun copyToClipboard(label: String, text: String, toastText: String? = null) {
-        val clipboard = activity.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-        if (clipboard == null) {
-            AppToast.show(activity, "无法访问剪贴板")
-            return
-        }
-        clipboard.setPrimaryClip(ClipData.newPlainText(label, text))
-        AppToast.show(activity, toastText ?: "已复制：$text")
     }
 
     private fun upsertGaiaVtokenCookie(token: String) {

@@ -871,10 +871,19 @@ class PlayerActivity : BaseActivity() {
                         context = this,
                         audioBalanceLevel = session.audioBalanceLevel,
                         onTransferHost = { kind, host ->
+                            val prev =
+                                when (kind) {
+                                    DebugStreamKind.VIDEO -> debug.videoTransferHost
+                                    DebugStreamKind.AUDIO -> debug.audioTransferHost
+                                    DebugStreamKind.MAIN -> debug.videoTransferHost
+                                }
                             when (kind) {
                                 DebugStreamKind.VIDEO -> debug.videoTransferHost = host
                                 DebugStreamKind.AUDIO -> debug.audioTransferHost = host
                                 DebugStreamKind.MAIN -> debug.videoTransferHost = host
+                            }
+                            if (prev != null && prev != host) {
+                                AppLog.i("Player", "transferHost ${kind.name.lowercase()} $prev -> $host")
                             }
                         },
                         onBytesTransferred = { _, bytes ->
@@ -978,7 +987,12 @@ class PlayerActivity : BaseActivity() {
                             Player.STATE_ENDED -> "ENDED"
                             else -> playbackState.toString()
                         }
-                    trace?.log("player:state", "state=$state pos=${engine.currentPosition}ms")
+                    trace?.log("player:state", "state=$state pos=${engine.currentPosition}ms buf=${engine.bufferedPosition}ms rebuf=${debug.rebufferCount} cdn=${debug.videoTransferHost.orEmpty()}/${debug.audioTransferHost.orEmpty()}")
+                    if (debug.lastPlaybackState == Player.STATE_BUFFERING && playbackState != Player.STATE_BUFFERING) {
+                        val durMs = bufferingOverlayController.bufferingDurationMs()
+                        val spd = bufferingOverlayController.currentSpeedBytesPerSecond()
+                        trace?.log("player:bufferingEnd", "state=$state dur=${durMs}ms spd=${spd ?: "-"}")
+                    }
                     if (playbackState == Player.STATE_BUFFERING && debug.lastPlaybackState != Player.STATE_BUFFERING && engine.playWhenReady) {
                         debug.rebufferCount++
                     }
@@ -3720,7 +3734,8 @@ class PlayerActivity : BaseActivity() {
                     "Player",
                     "selected source=$source targetQn=$targetQn targetAudioId=$targetAudioId actualQn=${playable.qn} " +
                         "codecid=${playable.codecid} dv=${playable.isDolbyVision} audio=${playable.audioKind}(${playable.audioId}) " +
-                        "video=${playable.videoUrl}",
+                        "video=${playable.videoUrl} " +
+                        "vHosts=${candidateHosts(playable.videoUrlCandidates)} aHosts=${candidateHosts(playable.audioUrlCandidates)}",
                 )
             }
 
@@ -3728,17 +3743,28 @@ class PlayerActivity : BaseActivity() {
                 AppLog.i(
                     "Player",
                     "selected source=$source targetQn=$targetQn targetAudioId=$targetAudioId actualQn=${playable.qn} " +
-                        "codecid=${playable.codecid} dv=${playable.isDolbyVision} videoOnly=${playable.videoUrl}",
+                        "codecid=${playable.codecid} dv=${playable.isDolbyVision} videoOnly=${playable.videoUrl} " +
+                        "vHosts=${candidateHosts(playable.videoUrlCandidates)}",
                 )
             }
 
             is Playable.Progressive -> {
                 AppLog.i(
                     "Player",
-                    "selected source=$source targetQn=$targetQn targetAudioId=$targetAudioId progressive=${playable.url}",
+                    "selected source=$source targetQn=$targetQn targetAudioId=$targetAudioId progressive=${playable.url} " +
+                        "hosts=${candidateHosts(playable.urlCandidates)}",
                 )
             }
         }
+    }
+
+    /** 候选 URL 的去重 host 列表 + 数量，用于诊断日志（限速排查时对比节点）。 */
+    private fun candidateHosts(urls: List<String>): String {
+        val hosts =
+            urls.mapNotNull { runCatching { Uri.parse(it.trim()).host.orEmpty() }.getOrNull() }
+                .filter { it.isNotBlank() }
+                .distinct()
+        return if (hosts.isEmpty()) "-" else "${hosts.joinToString(",")} n=${urls.size}"
     }
 
     companion object {

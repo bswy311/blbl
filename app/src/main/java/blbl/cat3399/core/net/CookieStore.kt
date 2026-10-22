@@ -94,6 +94,22 @@ class CookieStore(
         persistToDisk()
     }
 
+    /**
+     * 按名字删除 Cookie（跨 domain）。用于重置设备指纹：清掉 buvid3/buvid4/b_nut/sid 后，
+     * WebCookieMaintainer 会在下次请求时重新领一套全新指纹。
+     */
+    fun removeByName(names: Set<String>) {
+        if (names.isEmpty()) return
+        var changed = false
+        for (list in store.values) {
+            changed = list.removeAll { it.name in names } || changed
+        }
+        if (changed) {
+            persistToDisk()
+            AppLog.d("CookieStore", "removeByName names=$names")
+        }
+    }
+
     fun clearAll() {
         store.clear()
         prefs.edit().clear().apply()

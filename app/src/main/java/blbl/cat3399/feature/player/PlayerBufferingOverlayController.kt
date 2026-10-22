@@ -32,6 +32,18 @@ internal class PlayerBufferingOverlayController(
         speedMeter.addBytes(bytes)
     }
 
+    /** 最近采样窗口的拉流速度（B/s），无样本时为 null。用于诊断日志。 */
+    fun currentSpeedBytesPerSecond(nowMs: Long = SystemClock.elapsedRealtime()): Long? {
+        return speedMeter.currentBytesPerSecond(nowMs)
+    }
+
+    /** 本次 BUFFERING 状态已持续时长（ms），未进入过则为 0。 */
+    fun bufferingDurationMs(nowMs: Long = SystemClock.elapsedRealtime()): Long {
+        val started = bufferingStateStartedAtMs
+        if (started <= 0L) return 0L
+        return (nowMs - started).coerceAtLeast(0L)
+    }
+
     fun reset() {
         showJob?.cancel()
         showJob = null

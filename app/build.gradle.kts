@@ -126,6 +126,9 @@ dependencies {
 
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.brotli:dec:0.1.2")
+    
+    // QR code generation for the LAN log sharing dialog (core only, no android integration needed).
+    implementation("com.google.zxing:core:3.5.3")
 
     implementation("androidx.media3:media3-exoplayer:1.8.0")
     implementation("androidx.media3:media3-exoplayer-dash:1.8.0")

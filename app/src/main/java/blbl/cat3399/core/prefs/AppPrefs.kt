@@ -232,6 +232,18 @@ class AppPrefs(context: Context) {
         set(value) = prefs.edit().putString(KEY_DEVICE_BUVID, value.trim()).apply()
 
     /**
+     * 重置设备指纹：重新生成 deviceBuvid 并清除 buvid 激活标记，
+     * 让下一次播放用全新身份重新走指纹激活流程（解除被 CDN 风控标记后的播放限速）。
+     */
+    fun resetFingerprintState() {
+        prefs.edit()
+            .putString(KEY_DEVICE_BUVID, generateBuvid())
+            .remove(KEY_BUVID_ACTIVATED_MID)
+            .remove(KEY_BUVID_ACTIVATED_EPOCH_DAY)
+            .apply()
+    }
+
+    /**
      * Stable per-device UUID for diagnostics (e.g. log uploads).
      *
      * - Pref-backed (memory): once created/derived, keep using it.

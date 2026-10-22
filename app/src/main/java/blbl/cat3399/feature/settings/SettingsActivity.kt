@@ -1,13 +1,11 @@
 package blbl.cat3399.feature.settings
 
-import android.net.Uri
 import android.os.Bundle
 import android.view.KeyEvent
 import android.view.View
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import blbl.cat3399.core.io.CreateDocumentContract
 import blbl.cat3399.core.net.BiliClient
 import blbl.cat3399.core.ui.BaseActivity
 import blbl.cat3399.core.ui.FocusTreeUtils
@@ -29,18 +27,6 @@ class SettingsActivity : BaseActivity() {
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
             if (!this::interactionHandler.isInitialized) return@registerForActivityResult
             interactionHandler.onGaiaVgateResult(result)
-        }
-
-    private val exportDocumentLauncher =
-        registerForActivityResult(CreateDocumentContract()) { uri ->
-            if (!this::interactionHandler.isInitialized) return@registerForActivityResult
-            interactionHandler.onExportDocumentSelected(uri)
-        }
-
-    private val importConfigLauncher =
-        registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
-            if (!this::interactionHandler.isInitialized) return@registerForActivityResult
-            interactionHandler.onImportConfigSelected(uri)
         }
 
     private val sections =
@@ -65,8 +51,6 @@ class SettingsActivity : BaseActivity() {
                 activity = this,
                 state = state,
                 gaiaVgateLauncher = gaiaVgateLauncher,
-                exportDocumentLauncher = exportDocumentLauncher,
-                importConfigLauncher = importConfigLauncher,
             )
 
         binding.btnBack.setOnClickListener { finish() }

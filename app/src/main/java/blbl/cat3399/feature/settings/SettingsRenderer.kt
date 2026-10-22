@@ -231,6 +231,7 @@ class SettingsRenderer(
                     SettingEntry(SettingId.UserAgent, "User-Agent", prefs.userAgent.take(60), null),
                     SettingEntry(SettingId.Ipv4OnlyEnabled, "是否只允许使用IPV4", if (prefs.ipv4OnlyEnabled) "开" else "关", null),
                     SettingEntry(SettingId.GaiaVgate, "风控验证", gaiaVgateStatusText(), "播放被拦截后可在此手动完成人机验证"),
+                    SettingEntry(SettingId.ResetDeviceFingerprint, "重置设备指纹", "", "播放被限速（持续卡顿、网速只有几十 KB）时重置本机指纹"),
                     SettingEntry(SettingId.ClearCache, "清理缓存", cacheSizeText(), null),
                     SettingEntry(SettingId.ConfigTransfer, "导出/入配置", "打开", null),
                     SettingEntry(SettingId.ClearLogin, "清除登录", loginStatusText(), null),
@@ -514,8 +515,7 @@ class SettingsRenderer(
                 listOf(
                     SettingEntry(SettingId.AppVersion, "版本", BuildConfig.VERSION_NAME, null),
                     SettingEntry(SettingId.LogTag, "日志标签", "BLBL", "用于 Logcat 过滤"),
-                    SettingEntry(SettingId.ExportLogs, "导出日志", "保存到本地/U盘", "打包日志zip，可选导出到U盘等外部存储"),
-                    SettingEntry(SettingId.UploadLogs, "上传日志", "点击上传", "打包并上传日志zip到开发者（含设备/版本/非登录配置元数据）"),
+                    SettingEntry(SettingId.LanShareLogs, "局域网导出", "", "同一WiFi下手机/电脑扫码下载日志zip，不依赖外网"),
                     playerKernelEntry(),
                     SettingEntry(
                         SettingId.AutoUpdateCheckEnabled,

@@ -15,6 +15,7 @@ enum class SettingId(
     UserAgent("user_agent"),
     Ipv4OnlyEnabled("ipv4_only_enabled"),
     GaiaVgate("gaia_vgate"),
+    ResetDeviceFingerprint("reset_device_fingerprint"),
     ClearCache("clear_cache"),
     ConfigTransfer("config_transfer"),
     ClearLogin("clear_login"),
@@ -107,8 +108,7 @@ enum class SettingId(
     PlayerKernelCheck("player_kernel_check"),
     AppVersion("app_version"),
     LogTag("log_tag"),
-    ExportLogs("export_logs"),
-    UploadLogs("upload_logs"),
+    LanShareLogs("lan_share_logs"),
     AutoUpdateCheckEnabled("auto_update_check_enabled"),
     CheckUpdate("check_update"),
 

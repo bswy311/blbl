@@ -919,7 +919,7 @@ class MainActivity : BaseActivity(), SidebarFocusHost {
             AppPopup.confirm(
                 context = this,
                 title = "检测到上次异常退出",
-                message = "为了帮助开发者定位问题，请到「设置 - 关于应用」导出或上传日志。",
+                message = "为了帮助开发者定位问题，请到「设置 - 关于应用」局域网导出日志。",
                 positiveText = "打开设置",
                 negativeText = "知道了",
                 onPositive = { startActivity(Intent(this, SettingsActivity::class.java)) },

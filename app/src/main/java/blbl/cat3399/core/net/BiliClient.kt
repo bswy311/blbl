@@ -25,6 +25,7 @@ object BiliClient {
     private const val HDR_SKIP_ORIGIN = "X-Blbl-Skip-Origin"
     private const val LOG_HTTP_REQUESTS = false
     internal const val APP_CDN_USER_AGENT = "Bilibili Freedoooooom/MarkII"
+    private val DEVICE_FINGERPRINT_COOKIES = setOf("buvid3", "buvid4", "b_nut", "sid")
 
     lateinit var prefs: AppPrefs
         private set
@@ -145,6 +146,18 @@ object BiliClient {
 
     fun clearLoginSession() {
         accounts.clearAllAccountsAndCurrentSession(appPrefs = prefs, cookies = cookies)
+    }
+
+    /**
+     * 清除本实例的设备指纹 Cookie（buvid3/buvid4/b_nut/sid）并重新生成 deviceBuvid。
+     * 下次 API/播放请求会由 WebCookieMaintainer 自动领回一套全新指纹——
+     * 用于解除被 B站 CDN 风控标记后播放被限速（网速几十 KB）的问题。
+     * 不影响登录态（SESSDATA 等）与其它设置。
+     */
+    fun resetDeviceFingerprint() {
+        cookies.removeByName(DEVICE_FINGERPRINT_COOKIES)
+        prefs.resetFingerprintState()
+        AppLog.i(TAG, "resetDeviceFingerprint done")
     }
 
     private fun clientFor(url: String, noCookies: Boolean = false): OkHttpClient {

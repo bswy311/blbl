@@ -20,8 +20,8 @@ object AppLog {
     private const val PREFIX = "BLBL"
     private const val LOG_DIR_NAME = "logs"
 
-    private const val MAX_LOG_FILES = 10
-    private const val MAX_TOTAL_BYTES: Long = 10L * 1024 * 1024
+    private const val MAX_LOG_FILES = 20
+    private const val MAX_TOTAL_BYTES: Long = 25L * 1024 * 1024
 
     // Never block callers. When the buffer is full, drop the oldest log events.
     private const val FILE_EVENT_BUFFER = 256

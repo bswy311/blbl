@@ -6,6 +6,7 @@ import android.net.Uri
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.TransferListener
+import blbl.cat3399.core.log.AppLog
 import java.io.IOException
 
 internal enum class DebugStreamKind { VIDEO, AUDIO, MAIN }
@@ -66,12 +67,26 @@ internal class CdnFailoverDataSource(
                 val openedLength = ds.open(spec)
                 upstream = ds
                 state.prefer(idx)
+                if (attempt > 0) {
+                    AppLog.w(
+                        "Player",
+                        "cdnFailover kind=${state.kind.name.lowercase()} " +
+                            "host=${candidates[start].host.orEmpty()}->${uri.host.orEmpty()} " +
+                            "attempt=${attempt + 1}/${candidates.size}",
+                    )
+                }
                 return openedLength
             } catch (e: IOException) {
                 runCatching { ds.close() }
                 lastException = e
+                AppLog.w(
+                    "Player",
+                    "cdnFailoverAttempt kind=${state.kind.name.lowercase()} host=${uri.host.orEmpty()} " +
+                        "error=${e.javaClass.simpleName}:${e.message.orEmpty()}",
+                )
             }
         }
+        AppLog.e("Player", "cdnFailoverExhausted kind=${state.kind.name.lowercase()} attempts=${candidates.size}")
         throw lastException ?: IOException("Failed to open any CDN candidate (kind=${state.kind})")
     }
 
