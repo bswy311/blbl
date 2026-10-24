@@ -37,8 +37,8 @@
     <string name="play_all_order_shuffle">随机播放</string>
     <string name="play_all_order_sequential">顺序播放</string>
     <string name="play_all_order_reverse">倒序播放</string>
-    <string name="play_all_order_duration_long_first">时长顺序播放</string>
-    <string name="play_all_order_duration_short_first">时长倒序播放</string>
+    <string name="play_all_order_duration_long_first">时长由长到短播放</string>
+    <string name="play_all_order_duration_short_first">时长由短到长播放</string>
     <string name="play_all_order_recent_play">最近播放</string>
     <string name="play_all_loading_recent">正在按最近播放排序…</string>
     <string name="play_all_recent_unavailable">无法获取播放记录，已按原顺序播放</string>
