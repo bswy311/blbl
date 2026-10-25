@@ -2,6 +2,7 @@ package blbl.cat3399.feature.my
 
 import android.content.Intent
 import android.os.Bundle
+import android.view.KeyEvent
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -193,6 +194,17 @@ class MyToViewFragment : Fragment(), MyTabSwitchFocusTarget, RefreshKeyHandler {
         b.llPlayAllHeader.isVisible = true
         b.btnPlayAll.setOnClickListener { startPlayAll() }
         b.btnPlayOrder.setOnClickListener { showPlayOrderPicker() }
+        // 从「播放全部」栏再按上必须回到当前选中的 tab：交给系统焦点搜索会按几何距离挑 tab，
+        // 命中横向最近的左边 tab（如「番剧」），而不是选中项；enableDpadTabFocus 还会因此误切页面。
+        for (button in listOf(b.btnPlayAll, b.btnPlayOrder)) {
+            button.setOnKeyListener { _, keyCode, event ->
+                if (event.action == KeyEvent.ACTION_DOWN && keyCode == KeyEvent.KEYCODE_DPAD_UP) {
+                    AppLog.d("MyToView", "playAll header dpadUp -> focus selected my tab")
+                    return@setOnKeyListener focusSelectedMyTabIfAvailable()
+                }
+                false
+            }
+        }
         b.btnPlayAll.setOnFocusChangeListener { _, hasFocus -> if (hasFocus) lastFocusedHeaderView = b.btnPlayAll }
         b.btnPlayOrder.setOnFocusChangeListener { _, hasFocus -> if (hasFocus) lastFocusedHeaderView = b.btnPlayOrder }
         updatePlayOrderLabel()
