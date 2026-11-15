@@ -3,6 +3,7 @@ package blbl.cat3399.feature.player
 import android.view.KeyEvent
 import android.view.ViewConfiguration
 import androidx.lifecycle.lifecycleScope
+import blbl.cat3399.R
 import blbl.cat3399.core.net.BiliClient
 import blbl.cat3399.core.prefs.AppPrefs
 import blbl.cat3399.core.prefs.PlayerCustomShortcutAction
@@ -233,7 +234,11 @@ private fun PlayerActivity.applyPlayerCustomShortcut(keyCode: Int, action: Playe
                     player?.setPlaybackSpeed(it)
                 },
             )
-            showSeekHint("播放速度：${String.format(Locale.US, "%.2fx", next)}", hold = false)
+            showSeekHint(
+                // 与长按快进同文案；切回原速时给「已恢复原速」反馈。
+                speedHoldHintTextFor(next) ?: getString(R.string.player_hold_speed_cancel_hint),
+                hold = false,
+            )
         }
 
         is PlayerCustomShortcutAction.SetResolutionQn -> {

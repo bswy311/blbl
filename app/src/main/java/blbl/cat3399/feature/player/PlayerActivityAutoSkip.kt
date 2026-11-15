@@ -141,8 +141,7 @@ internal fun PlayerActivity.dismissAutoResumeHint() {
     autoResumeUndoTargetMs = -1L
     // tvSeekHint is shared; only hide it if we are still showing our own message.
     if (msg != null && binding.tvSeekHint.text?.toString() == msg) {
-        seekHintJob?.cancel()
-        binding.tvSeekHint.visibility = View.GONE
+        hideSeekHintOrShowSpeedHint()
     }
 }
 
@@ -188,8 +187,7 @@ internal fun PlayerActivity.dismissAutoSkipHint() {
     autoSkipHintText = null
     // tvSeekHint is shared; only hide it if we are still showing our own message.
     if (msg != null && binding.tvSeekHint.text?.toString() == msg) {
-        seekHintJob?.cancel()
-        binding.tvSeekHint.visibility = View.GONE
+        hideSeekHintOrShowSpeedHint()
     }
 }
 

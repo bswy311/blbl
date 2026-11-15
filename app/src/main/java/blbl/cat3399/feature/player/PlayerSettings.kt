@@ -774,6 +774,8 @@ internal fun PlayerActivity.showSpeedDialog() {
             afterApplied = {
                 persistentHoldSpeedBoost = false
                 player?.setPlaybackSpeed(it)
+                // 倍速播放期间左下角要常显提示（与长按快进同文案），这里先给临时提示接力。
+                speedHoldHintTextFor(it)?.let { text -> showSeekHint(text, hold = false) }
             },
         )
     }

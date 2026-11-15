@@ -1801,6 +1801,9 @@ class PlayerActivity : BaseActivity() {
                 if (hasControlsFocusOutsideSeekBar()) return super.dispatchKeyEvent(event)
 
                 if (event.repeatCount > 0) {
+                    // 不足 KEY_HOLD_TRIGGER_MS 的 repeat 只消费不触发，继续等 pending 计时器到点，
+                    // 让“想快进一步、轻微按久”仍然落到 step seek 而不是提前进入长按。
+                    if (!isKeyHoldPastTrigger(event.eventTime, event.downTime)) return true
                     clearKeySeekPending()
                     // Long-press LEFT: always do preview-scrub rewind.
                     startHoldScrub(direction = -1, showControls = false)
@@ -1821,6 +1824,8 @@ class PlayerActivity : BaseActivity() {
                 if (hasControlsFocusOutsideSeekBar()) return super.dispatchKeyEvent(event)
 
                 if (event.repeatCount > 0) {
+                    // 同 LEFT：不足 KEY_HOLD_TRIGGER_MS 的 repeat 只消费不触发。
+                    if (!isKeyHoldPastTrigger(event.eventTime, event.downTime)) return true
                     clearKeySeekPending()
                     if (binding.seekProgress.isFocused) {
                         startHoldScrub(direction = +1, showControls = false)
@@ -3812,6 +3817,13 @@ class PlayerActivity : BaseActivity() {
         internal const val TOUCH_GESTURE_SEEK_MAX_FULL_WIDTH_MS = 4 * 60_000L
         internal const val TOUCH_GESTURE_MIN_BRIGHTNESS = 0.02f
         internal const val SEEK_HINT_HIDE_DELAY_MS = 900L
+
+        /**
+         * 按住 LEFT/RIGHT 进入长按快进（倍速）/拖动的按住时长阈值。
+         * 此前用系统长按阈值 ViewConfiguration.getLongPressTimeout()（默认 400ms），
+         * 用户反馈想快进一步时轻微按久就误进倍速，拉长到 700ms（用户 2026-11-15 选定）。
+         */
+        internal const val KEY_HOLD_TRIGGER_MS = 700L
         internal const val PLAYBACK_TITLE_HINT_HIDE_DELAY_MS = 2_500L
         internal const val AUTO_NEXT_PREVIEW_WINDOW_MS = 5_000L
         internal const val AUTO_NEXT_TITLE_MAX_CHARS = 18

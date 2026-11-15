@@ -3,7 +3,6 @@ package blbl.cat3399.feature.player
 import android.os.SystemClock
 import android.view.KeyEvent
 import android.view.View
-import android.view.ViewConfiguration
 import androidx.constraintlayout.widget.ConstraintSet
 import androidx.lifecycle.lifecycleScope
 import blbl.cat3399.R
@@ -459,15 +458,19 @@ internal fun PlayerActivity.clearKeySeekPending() {
     keySeekPendingDirection = 0
 }
 
+/** 按住 LEFT/RIGHT 达到该时长才进入长按快进/拖动；之前的 repeat 事件只消费不触发。 */
+internal fun isKeyHoldPastTrigger(eventTimeMs: Long, downTimeMs: Long): Boolean =
+    eventTimeMs - downTimeMs >= PlayerActivity.KEY_HOLD_TRIGGER_MS
+
 internal fun PlayerActivity.beginKeySeekPending(keyCode: Int, direction: Int, showControls: Boolean) {
     clearKeySeekPending()
     keySeekPendingKeyCode = keyCode
     keySeekPendingDirection = direction
 
     // Delay to decide tap vs hold:
-    // - If repeats arrive, dispatchKeyEvent() will start hold immediately and clear this pending state.
-    // - If no repeats (some remotes/media keys), start hold after the long-press timeout.
-    val timeoutMs = ViewConfiguration.getLongPressTimeout().toLong()
+    // - Repeats arriving before KEY_HOLD_TRIGGER_MS are consumed but ignored (see dispatchKeyEvent).
+    // - If no repeats (some remotes/media keys), start hold once KEY_HOLD_TRIGGER_MS elapses.
+    val timeoutMs = PlayerActivity.KEY_HOLD_TRIGGER_MS
     keySeekHoldDetectJob =
         lifecycleScope.launch {
             delay(timeoutMs)
@@ -585,6 +588,7 @@ internal fun PlayerActivity.startHoldSeek(direction: Int, showControls: Boolean)
     engine.setPlaybackSpeed(holdSpeed)
     engine.playWhenReady = true
     holdSeekJob = lifecycleScope.launch { kotlinx.coroutines.awaitCancellation() }
+    AppLog.i("Player", "holdSeek start dir=+1 mode=speed speed=$holdSpeed")
 }
 
 internal fun PlayerActivity.startHoldScrub(direction: Int, showControls: Boolean) {
@@ -613,6 +617,10 @@ internal fun PlayerActivity.startHoldScrub(direction: Int, showControls: Boolean
 
 internal fun PlayerActivity.startHoldScrubSeek(engine: BlblPlayerEngine, direction: Int, speed: Float, fixedStepMs: Long?) {
     holdSpeedBoostActive = false
+    AppLog.i(
+        "Player",
+        "holdSeek start dir=$direction mode=${if (fixedStepMs != null) "scrub_fixed" else "scrub"} speed=$speed",
+    )
     val duration = engine.duration.takeIf { it > 0 } ?: currentViewDurationMs ?: 0L
     if (duration <= 0L) {
         // Unknown duration: cannot show an actual progress bar scrub; fall back to speed-hold.
@@ -729,9 +737,7 @@ internal fun PlayerActivity.holdSeekSpeed(): Float {
 }
 
 internal fun PlayerActivity.holdSeekSpeedText(speed: Float): String {
-    val v = speed.takeIf { it.isFinite() } ?: AppPrefs.PLAYER_HOLD_SEEK_SPEED_DEFAULT
-    val fixed = String.format(Locale.US, "%.2f", v)
-    return fixed.trimEnd('0').trimEnd('.')
+    return holdSpeedLabel(speed)
 }
 
 internal fun PlayerActivity.holdScrubFixedStepMs(): Long {
@@ -778,6 +784,44 @@ internal fun PlayerActivity.resolveSeekUiBufferedPositionMs(
     return buffered
 }
 
+private const val SPEED_HINT_SPEED_EPSILON = 0.001f
+
+/** 倍速数字的展示格式：去尾零（2.00 → 2、1.25 → 1.25）。 */
+internal fun holdSpeedLabel(speed: Float): String {
+    val v = speed.takeIf { it.isFinite() } ?: AppPrefs.PLAYER_HOLD_SEEK_SPEED_DEFAULT
+    val fixed = String.format(Locale.US, "%.2f", v)
+    return fixed.trimEnd('0').trimEnd('.')
+}
+
+/**
+ * 非原速快进播放时的常驻提示文案，与长按快进按住时一致（「快进 x2」）——用户要求
+ * 不要「播放速度：X.XXx」这类文案。原速或慢速（≤1.0x）返回 null（不常显）。
+ */
+internal fun speedHoldHintTextFor(speed: Float): String? {
+    if (!speed.isFinite()) return null
+    if (speed <= 1f + SPEED_HINT_SPEED_EPSILON) return null
+    return "快进 x${holdSpeedLabel(speed)}"
+}
+
+internal fun PlayerActivity.persistentSpeedHintText(): String? {
+    return player?.playbackSpeed?.let(::speedHoldHintTextFor)
+}
+
+/**
+ * 收尾 tvSeekHint：取消 pending 隐藏后，若当前非原速播放则改显常驻倍速提示（用户
+ * 要求倍速播放期间左下角一直可见，恢复原速后才真正消失），否则直接隐藏。
+ */
+internal fun PlayerActivity.hideSeekHintOrShowSpeedHint() {
+    seekHintJob?.cancel()
+    val speedHint = persistentSpeedHintText()
+    if (speedHint != null) {
+        binding.tvSeekHint.text = speedHint
+        binding.tvSeekHint.visibility = View.VISIBLE
+    } else {
+        binding.tvSeekHint.visibility = View.GONE
+    }
+}
+
 internal fun PlayerActivity.showSeekHint(
     text: String,
     hold: Boolean,
@@ -804,7 +848,7 @@ internal fun PlayerActivity.scheduleHideSeekHint(hideDelayMs: Long = PlayerActiv
     seekHintJob =
         lifecycleScope.launch {
             delay(hideDelayMs)
-            binding.tvSeekHint.visibility = View.GONE
+            hideSeekHintOrShowSpeedHint()
         }
 }
 

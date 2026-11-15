@@ -186,8 +186,7 @@ internal fun PlayerActivity.dismissAutoNextHint() {
     autoNextHintText = null
     // tvSeekHint is shared across multiple features (auto-resume/skip/etc). Only hide it if we are still showing our own message.
     if (msg != null && binding.tvSeekHint.text?.toString() == msg) {
-        seekHintJob?.cancel()
-        binding.tvSeekHint.visibility = View.GONE
+        hideSeekHintOrShowSpeedHint()
     }
 }
 
